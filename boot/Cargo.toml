@@ -1,0 +1,9 @@
+[package]
+name = "boot"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+acpi = "5.2.0"
+log = "0.4.27"
+uefi = { version = "0.34.1", features = ["panic_handler", "global_allocator"] }
