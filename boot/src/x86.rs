@@ -30,4 +30,11 @@ pub fn wrmsr(msr: u32, val: u64) {
     }
 }
 
+/// Get the extended APIC ID on this core (which should reflect the processor ID).
+pub fn get_ext_lapic_id() -> u32 { 
+    unsafe { 
+        let result = core::arch::x86_64::__cpuid(0x0000_000b);
+        result.edx
+    }
+}
 

@@ -1,9 +1,12 @@
 #![no_std]
 #![no_main]
 
+#![feature(allocator_api)]
+
 mod x86;
 mod bup;
 mod pxe;
+mod smp;
 
 // We're using the 'global_allocator' feature in the 'uefi' crate. 
 extern crate alloc;
@@ -14,26 +17,6 @@ extern crate alloc;
 use uefi::prelude::*;
 use uefi::println;
 use uefi::runtime::ResetType;
-//use uefi::proto::pi::mp::MpServices;
-
-// NOTE: Apparently you can run on other APs with MP_SERVICES
-//fn run_on_all(cb: fn()) -> uefi::Result<()> {
-//    let handle = uefi::boot::get_handle_for_protocol::<MpServices>()?;
-//    let mp_services = uefi::boot::open_protocol_exclusive::<MpServices>(handle)?;
-//    cb();
-//    if let Err(e) = mp_services.startup_all_aps(true, run_cb, cb as *mut _, None, None) {
-//        if e.status() != Status::NOT_STARTED {
-//            return Err(e);
-//        }
-//    }
-//    Ok(())
-//}
-//
-//extern "efiapi" fn run_cb(content: *mut core::ffi::c_void) {
-//    let cb: fn() = unsafe { core::mem::transmute(content) };
-//    cb();
-//}
-
 
 #[entry]
 fn efi_main() -> Status {
@@ -43,17 +26,46 @@ fn efi_main() -> Status {
     println!("[*] HELO from mrld :^)");
     bup::do_acpi_init();
 
-    //let mm = uefi::boot::memory_map(MemoryType::LOADER_DATA).unwrap();
-    //println!("[*] Memory map:");
-    //for entry in mm.entries() { 
-    //    println!("  phys={:016x} virt={:016x}", entry.phys_start, entry.virt_start);
-    //}
+    use acpi::platform::ProcessorState;
+    let platform_info = bup::get_platform_info();
+    if let Some(proc_info) = &platform_info.processor_info {
+        for ap in proc_info.application_processors.iter() {
+            if ap.state == ProcessorState::Disabled {
+                continue;
+            }
+            println!("ap #{}, lapic_id={}", ap.processor_uid, ap.local_apic_id);
+        }
+    }
 
     println!("[*] mrld entrypoint completed");
+
+    pxe::download_kernel().unwrap();
+
+    //match pxe::download_kernel() {
+    //    Ok(_) => {},
+    //    Err(e) => match e.status() {
+    //        uefi::Status::TIMEOUT => {
+    //            println!("[!] PXE timed out while requesting kernel?");
+    //        },
+    //        _ => {
+    //            println!("[!] PXE error {}", e);
+    //        },
+    //    },
+    //} 
 
     wait_for_shutdown();
     //Status::SUCCESS
 }
+
+//fn wait_for_kernel() -> ! { 
+//    println!("[*] Press any key to jump into the kernel...");
+//    let key_event = uefi::system::with_stdin(|stdin| { 
+//        stdin.wait_for_key_event().unwrap()
+//    });
+//    let mut events = [ key_event ];
+//    uefi::boot::wait_for_event(&mut events).unwrap();
+//    unimplemented!("kernel entrypoint");
+//}
 
 fn wait_for_shutdown() -> ! {
     println!("[*] Press any key to shut down the machine ...");

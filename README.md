@@ -1,39 +1,58 @@
 # mrld
 
-`mrld` (like "emerald") is a UEFI stub for bare-metal x86 experiements.
+`mrld` (like "emerald") is a UEFI bootloader and kernel for bare-metal x86 
+experiments.
 
 ```
-boot/            - mrld UEFI boot stub
+boot/            - mrld UEFI bootloader
+kernel/          - mrld kernel
 pxe/             - [Untracked] directory for serving files with PXE/TFTP
+xtask/           - mrld build tooling
 README.md        - You are here
 start-network.sh - Script for serving bootloader with PXE
 ```
 
-## Pending Features
+## Building this Project
 
-- [ ] Serial console output
-- [ ] Script for target Wake-on-LAN
-- [ ] Actually do something useful
+The [`xtask`](./xtask) crate is used to automate building and testing.
+Run `cargo xtask help` to see more information about available commands. 
 
-## Usage
+- `cargo xtask build` invokes `cargo build` for the bootloader and kernel
+- `cargo xtask qemu` attempts to PXE boot on QEMU 
 
-The intended workflow here is: 
+### Build Notes
 
-- The target machine is connected on a point-to-point ethernet link
-- Start a DHCP server for negotiating PXE boot on the target
-- Start a TFTP server for serving files
-- Start the target machine
+- The bootloader uses the `x86_64-unknown-uefi` target
+- The kernel uses the [`mrld-kernel.json`](./mrld-kernel.json) target
 
-I'm using the ISC DHCP server and [altugbakan/rs-tftpd](https://github.com/altugbakan/rs-tftpd) 
-(which you can easily install with `cargo install tftpd`).
+## Using this Project
 
-For now, this is all automated with [`start-network.sh`](./start-network.sh). 
-You will probably have to tweak this to reflect your own setup.
+For now, `mrld` is only intended to be booted over the network with PXE. 
+A DHCP/TFTP server is expected to serve the bootloader and kernel to the 
+target machine. 
 
-## Configuration
+### PXE Configuration
 
-You'll also have to write your own `dhcpd.conf` and place it in this directory. 
-For instance, mine looks like this: 
+This project expects that the [`pxe/`](./pxe) directory is used when serving 
+files to the target machine. For now, this involves making symlinks to 
+the bootloader/kernel binaries: 
+
+```
+$ cd pxe/
+$ ln -s ../target/x86_64-unknown-uefi/release/mrld-boot.efi mrld-boot.efi
+$ ln -s ../target/mrld-kernel/release/mrld-kernel mrld-kernel
+```
+
+When booting on real hardware, the current workflow assumes that you're using the 
+typical ISC DHCP server (`dhcpd`) and [altugbakan/rs-tftpd](https://github.com/altugbakan/rs-tftpd)
+(which can be easily installed with `cargo install tftpd`).
+I'm currently using [`start-network.sh`](./start-network.sh) to control 
+these. You will probably have to change this to reflect your setup. 
+At some point, this will all be replaced with an `xtask` command. 
+
+This also assumes that the user has created a [`dhcpd.conf`](./dhcpd.conf) in 
+the project root. Here's what mine looks like, assuming the PXE server is 
+running on `10.200.200.1`: 
 
 ```
 # dhcpd.conf
@@ -42,19 +61,36 @@ option routers 10.200.200.1;
 
 subnet 10.200.200.0 netmask 255.255.255.0 {
 	range 10.200.200.40 10.200.200.49;
+    next-server 10.200.200.1; 
 }
 
 host target {
 	hardware ethernet <target mac address>
 	fixed-address 10.200.200.200;
-	filename "boot.efi";
+	filename "mrld-boot.efi";
 }
 ```
 
-Files are served over TFTP from the [`pxe/`](./pxe) directory. 
-For now, I have `boot.efi` symlinked, ie. 
+### Using QEMU
 
-```
-$ ln -s target/x86_64-unknown-uefi/release/boot.efi pxe/boot.efi
-```
+UEFI support in QEMU relies on OVMF. The paths to the appropriate OVMF images 
+are hardcoded here, and you may have to change them for your own setup. 
+See [`xtask`](./xtask/src/main.rs) for more information. 
+
+QEMU has a built-in DHCP/TFTP server that transparently handles PXE, and 
+no other configuration should be required for using PXE. 
+
+The current process is:
+
+1. Run `cargo xtask build`
+2. Run `cargo xtask qemu`
+
+### Using Real Hardware
+
+The current process is:
+
+1. The target machine is connected over ethernet to the host machine
+2. Run `cargo xtask build`
+3. Run `start-network.sh`
+4. Start the target machine
 

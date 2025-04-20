@@ -1,6 +1,13 @@
 [workspace]
-members = ["boot"]
+members = ["boot", "kernel", "xtask"]
 resolver = "3"
 
-[profile.dev]
+[profile.release]
+# NOTE: You apparently cannot specify this in a package profile
 panic = "abort"
+
+[profile.release.package.mrld-boot]
+
+[profile.release.package.mrld-kernel]
+
+

@@ -1,7 +1,11 @@
+//! System bring-up during UEFI boot services. 
 
 use acpi::*;
 use core::ptr::NonNull;
+use core::ffi::c_void;
 use uefi::println;
+use spin::Once;
+use crate::x86;
 
 #[derive(Clone)]
 pub struct MrldAcpiHandler;
@@ -22,33 +26,26 @@ impl acpi::AcpiHandler for MrldAcpiHandler {
     }
 }
 
+static PLATFORM_INFO: Once<PlatformInfo<'static, alloc::alloc::Global>> = Once::new();
+
+pub fn get_platform_info() -> &'static PlatformInfo<'static,  alloc::alloc::Global> {
+    PLATFORM_INFO.get().unwrap()
+}
+
+
 pub fn do_acpi_init() {
     use uefi::table::cfg::ACPI2_GUID;
-    use acpi::platform::ProcessorState;
 
     let rsdp_addr = uefi::system::with_config_table(|tbl| {
         let rdsp = tbl.iter().find(|e| e.guid == ACPI2_GUID).unwrap();
         rdsp.address as usize
     });
 
-    let acpi_tables = unsafe { 
-        AcpiTables::from_rsdp(MrldAcpiHandler, rsdp_addr).unwrap()
-    };
-
-    let platform_info = acpi_tables.platform_info().unwrap();
-    let proc_info = platform_info.processor_info.unwrap();
-    println!("BSP proc_id={} lapic_id={}", 
-        proc_info.boot_processor.processor_uid,
-        proc_info.boot_processor.local_apic_id,
-    );
-    for ap in proc_info.application_processors.iter() {
-        if ap.state == ProcessorState::Disabled {
-            continue;
-        }
-        println!("AP  proc_id={} lapic_id={}", 
-            ap.processor_uid, 
-            ap.local_apic_id,
-        );
+    if let Ok(acpi_tables) = unsafe { 
+        AcpiTables::from_rsdp(MrldAcpiHandler, rsdp_addr)
+    } {
+        let platform_info = PlatformInfo::new(&acpi_tables).unwrap();
+        PLATFORM_INFO.call_once(|| platform_info);
     }
 }
 
@@ -56,7 +53,7 @@ pub fn do_console_init() {
     use uefi::proto::console::text::OutputMode;
 
     uefi::system::with_stdout(|stdout| { 
-        let tgt_mode = stdout.modes().find(|m| m.index() == 1).unwrap();
+        let tgt_mode = stdout.modes().find(|m| m.index() == 0).unwrap();
         stdout.set_mode(tgt_mode).unwrap();
         stdout.clear().unwrap();
     });
