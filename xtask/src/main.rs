@@ -13,11 +13,14 @@ enum XtaskCommand {
     /// Build the bootloader and kernel
     Build,
 
-    /// PXE boot into QEMU
+    /// PXE boot into the bootloader with QEMU
     Qemu,
 
-    /// Start PXE server
+    /// Start PXE services on the host machine
     Pxe,
+
+    /// Run 'picocom' (for communicating with a target over /dev/ttyUSB0)
+    Console,
 }
 
 /// Build the UEFI bootloader
@@ -122,6 +125,14 @@ fn run_qemu(root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn run_picocom() -> Result<()> {
+    Command::new("picocom")
+        .args(["-q", "-b", "115200", "/dev/ttyUSB0"])
+        .spawn()?
+        .wait()?;
+    Ok(())
+}
+
 // TODO: 
 // - Add symlinks to build artifacts
 // - PXE server command
@@ -140,6 +151,9 @@ fn main() -> Result<()> {
         XtaskCommand::Pxe => {
             unimplemented!();
         }
+        XtaskCommand::Console => {
+            run_picocom()?;
+        },
     }
     Ok(())
 }
