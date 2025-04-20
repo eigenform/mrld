@@ -34,14 +34,8 @@ target machine.
 ### PXE Configuration
 
 This project expects that the [`pxe/`](./pxe) directory is used when serving 
-files to the target machine. For now, this involves making symlinks to 
-the bootloader/kernel binaries: 
-
-```
-$ cd pxe/
-$ ln -s ../target/x86_64-unknown-uefi/release/mrld-boot.efi mrld-boot.efi
-$ ln -s ../target/mrld-kernel/release/mrld-kernel mrld-kernel
-```
+files to the target machine. `cargo xtask build` automatically creates 
+symlinks in this directory to the bootloader UEFI executable and kernel ELF.
 
 When booting on real hardware, the current workflow assumes that you're using the 
 typical ISC DHCP server (`dhcpd`) and [altugbakan/rs-tftpd](https://github.com/altugbakan/rs-tftpd)
