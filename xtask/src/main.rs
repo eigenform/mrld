@@ -53,6 +53,30 @@ fn build_kernel(root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn make_symlinks(root: &Path) -> Result<()> {
+    use std::os::unix::fs::symlink;
+    use std::io::ErrorKind;
+    let pxe_path = root.join("pxe");
+
+    let bootloader_path = root.join("target/x86_64-unknown-uefi/release/mrld-boot.efi");
+    let bootloader_link = pxe_path.join("mrld-boot.efi");
+    let kernel_path = root.join("target/mrld-kernel/release/mrld-kernel");
+    let kernel_link  = pxe_path.join("mrld-kernel");
+
+    if let Err(e) = symlink(bootloader_path, bootloader_link) { 
+        if e.kind() != ErrorKind::AlreadyExists {
+            return Err(e.into());
+        }
+    };
+    if let Err(e) = symlink(kernel_path, kernel_link) { 
+        if e.kind() != ErrorKind::AlreadyExists {
+            return Err(e.into());
+        }
+    };
+
+    Ok(())
+}
+
 // NOTE: Other users might have to change this..
 const OVMF_CODE: &'static str = "/usr/share/edk2-ovmf/x64/OVMF_CODE.4m.fd";
 const OVMF_VARS: &'static str = "/usr/share/edk2-ovmf/x64/OVMF_VARS.4m.fd";
@@ -108,6 +132,7 @@ fn main() -> Result<()> {
         XtaskCommand::Build => { 
             build_boot(&root)?;
             build_kernel(&root)?;
+            make_symlinks(&root)?;
         },
         XtaskCommand::Qemu => {
             run_qemu(&root)?;
