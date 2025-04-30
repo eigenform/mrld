@@ -1,5 +1,5 @@
 [workspace]
-members = ["boot", "kernel", "xtask"]
+members = ["boot", "kernel", "mrld", "xtask"]
 resolver = "3"
 
 [profile.release]

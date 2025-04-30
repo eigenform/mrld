@@ -6,6 +6,7 @@ experiments.
 ```
 boot/            - mrld UEFI bootloader
 kernel/          - mrld kernel
+mrld/            - mrld support library
 pxe/             - [Untracked] directory for serving files with PXE/TFTP
 xtask/           - mrld build tooling
 README.md        - You are here
@@ -22,8 +23,12 @@ Run `cargo xtask help` to see more information about available commands.
 
 ### Build Notes
 
-- The bootloader uses the `x86_64-unknown-uefi` target
-- The kernel uses the [`mrld-kernel.json`](./mrld-kernel.json) target
+There are three parts to this: 
+
+- A UEFI boot-stub/bootloader, using the `x86_64-unknown-uefi` target
+- A kernel using the [`mrld-kernel.json`](./mrld-kernel.json) target
+- A support library (which should be compatible with both targets)
+
 
 ## Using this Project
 
@@ -42,7 +47,6 @@ typical ISC DHCP server (`dhcpd`) and [altugbakan/rs-tftpd](https://github.com/a
 (which can be easily installed with `cargo install tftpd`).
 I'm currently using [`start-network.sh`](./start-network.sh) to control 
 these. You will probably have to change this to reflect your setup. 
-At some point, this will all be replaced with an `xtask` command. 
 
 This also assumes that the user has created a [`dhcpd.conf`](./dhcpd.conf) in 
 the project root. Here's what mine looks like, assuming the PXE server is 
@@ -65,6 +69,8 @@ host target {
 }
 ```
 
+At some point, this will all be replaced with an `xtask` command. 
+
 ### Using QEMU
 
 UEFI support in QEMU relies on OVMF. The paths to the appropriate OVMF images 
@@ -85,6 +91,6 @@ The current process is:
 
 1. The target machine is connected over ethernet to the host machine
 2. Run `cargo xtask build`
-3. Run `start-network.sh`
+3. Run `start-network.sh` (in the future, `cargo xtask pxe`)
 4. Start the target machine
 

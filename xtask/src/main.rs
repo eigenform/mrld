@@ -6,6 +6,8 @@ use std::process::*;
 use std::path::Path;
 use std::env;
 
+mod pxe;
+
 /// `mrld` hacky xtask build system
 #[derive(Parser)]
 #[command(verbatim_doc_comment)]
@@ -17,15 +19,16 @@ enum XtaskCommand {
     Qemu,
 
     /// Start PXE services on the host machine
-    Pxe,
+    Pxe(pxe::PxeArgs),
 
     /// Run 'picocom' (for communicating with a target over /dev/ttyUSB0)
     Console,
 }
 
+
 /// Build the UEFI bootloader
 fn build_boot(root: &Path) -> Result<()> {
-    Command::new("cargo")
+    let cmd = Command::new("cargo")
         .args([
             "build", 
             "--package=mrld-boot",
@@ -36,12 +39,17 @@ fn build_boot(root: &Path) -> Result<()> {
         .current_dir(root)
         .spawn()?
         .wait()?;
+    if let Some(code) = cmd.code() {
+        if code != 0 { 
+            return Err(anyhow!("Bootloader build error"));
+        }
+    }
     Ok(())
 }
 
 /// Build the kernel
 fn build_kernel(root: &Path) -> Result<()> {
-    Command::new("cargo")
+    let cmd = Command::new("cargo")
         .args([
             "build", 
             "--package=mrld-kernel",
@@ -53,6 +61,11 @@ fn build_kernel(root: &Path) -> Result<()> {
         .current_dir(root)
         .spawn()?
         .wait()?;
+    if let Some(code) = cmd.code() {
+        if code != 0 { 
+            return Err(anyhow!("Kernel build error"));
+        }
+    }
     Ok(())
 }
 
@@ -122,6 +135,7 @@ fn run_qemu(root: &Path) -> Result<()> {
         .current_dir(root)
         .spawn()?
         .wait()?;
+
     Ok(())
 }
 
@@ -133,9 +147,6 @@ fn run_picocom() -> Result<()> {
     Ok(())
 }
 
-// TODO: 
-// - Add symlinks to build artifacts
-// - PXE server command
 fn main() -> Result<()> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let cmd = XtaskCommand::parse();
@@ -148,7 +159,8 @@ fn main() -> Result<()> {
         XtaskCommand::Qemu => {
             run_qemu(&root)?;
         },
-        XtaskCommand::Pxe => {
+        XtaskCommand::Pxe(args) => {
+            //pxe::write_dhcpd_conf(&args)?;
             unimplemented!();
         }
         XtaskCommand::Console => {

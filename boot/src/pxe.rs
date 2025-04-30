@@ -1,110 +1,142 @@
+//! 'mrld' PXE kernel loader
 
-use uefi::{println, print};
-use uefi::boot::ScopedProtocol;
-use uefi::proto::{
-    network::{
-        IpAddress,
-        pxe::{ Packet, BaseCode, DhcpV4Packet, UdpOpFlags, },
-    },
-};
-use core::ffi::CStr;
-
-// NOTE: Fixed PXE server address for now
-const SERVER_IP: IpAddress = IpAddress::new_v4([10, 200, 200, 1]);
-const KERNEL_FILENAME: &'static uefi::CStr8 = {
-    uefi::cstr8!("mrld-kernel")
-};
-
-
-pub fn download_kernel() -> uefi::Result<()> {
-    use uefi::boot::{
+use uefi::{
+    println, CStr8, cstr8,
+    boot::{
+        AllocateType,
+        MemoryType,
         get_handle_for_protocol,
         open_protocol_exclusive,
-    };
+    },
+    proto::{
+        network::{
+            IpAddress,
+            pxe::{ BaseCode, DhcpV4Packet },
+        },
+    },
+};
+use core::ptr::NonNull;
 
-    let handle = get_handle_for_protocol::<BaseCode>()?;
-    let mut base_code = open_protocol_exclusive::<BaseCode>(handle)?;
+pub struct KernelImage { 
+    /// Pointer to the kernel ELF
+    pub ptr: NonNull<u8>,
+    /// Size of the kernel ELF (in bytes)
+    pub size: usize,
+}
+impl KernelImage {
+    /// Fixed remote filename on the PXE server
+    pub const REMOTE_FILENAME: &'static CStr8 = cstr8!("mrld-kernel");
+    pub const MEMORY_TYPE: MemoryType = MemoryType::custom(0x8000_0001);
 
-    // NOTE: Currently, we only expect users to be PXE booting 'mrld-boot'.
-    // Just return an error if PXE is not already started. 
-    match base_code.start(false) { 
-        Ok(_) => {
-            println!("[!] PXE services were not already started?");
+    pub fn as_mut_slice(&mut self) -> &mut [u8] { 
+        unsafe { 
+            NonNull::slice_from_raw_parts(self.ptr, self.size).as_mut()
+        }
+    }
+    pub fn as_slice(&self) -> &[u8] { 
+        unsafe { 
+            NonNull::slice_from_raw_parts(self.ptr, self.size).as_ref()
+        }
+    }
+}
+
+impl KernelImage {
+    /// Download the kernel image with the UEFI PXE protocol.
+    ///
+    /// NOTE: Currently, we *expect* the bootloader itself has been loaded 
+    /// over PXE, and we return an error if PXE is not already started. 
+    pub fn download() -> uefi::Result<Self> { 
+        let handle = get_handle_for_protocol::<BaseCode>()?;
+        let mut base_code = open_protocol_exclusive::<BaseCode>(handle)?;
+
+        match base_code.start(false) { 
+            Ok(_) => {
+                println!("[!] PXE services were not already started?");
+                return Err(uefi::Error::new(uefi::Status::NOT_READY, ()));
+            },
+            Err(e) => {
+                match e.status() { 
+                    uefi::Status::ALREADY_STARTED => {},
+                    _ => return Err(e),
+                }
+            },
+        }
+        if !base_code.mode().dhcp_ack_received { 
             return Err(uefi::Error::new(uefi::Status::NOT_READY, ()));
-        },
-        Err(e) => {
-            match e.status() { 
-                uefi::Status::ALREADY_STARTED => {},
-                _ => return Err(e),
-            }
-        },
+        }
+
+        // Get the address of the DHCP server, which we *assume* is also 
+        // acting as the TFTP server hosting our kernel image. 
+        let ack: &DhcpV4Packet = base_code.mode().dhcp_ack.as_ref();
+        if ack.bootp_si_addr == [0, 0, 0, 0] { 
+            println!("[!] DHCPv4 ACK had no server address (SIADDR)?");
+            return Err(uefi::Error::new(uefi::Status::NOT_FOUND, ()));
+        }
+
+        let server_ip = IpAddress::new_v4(ack.bootp_si_addr);
+        let kernel_sz = base_code.tftp_get_file_size(
+            &server_ip, 
+            &Self::REMOTE_FILENAME
+        )?;
+        let num_pages = (kernel_sz / crate::PAGE_SZ as u64) + 1;
+        let ptr: NonNull<u8> = uefi::boot::allocate_pages(
+            AllocateType::AnyPages,
+            MemoryType::BOOT_SERVICES_DATA,
+            num_pages as usize
+        ).unwrap();
+
+        let mut res = KernelImage { 
+            size: kernel_sz as usize,
+            ptr,
+        };
+        base_code.tftp_read_file(
+            &server_ip, 
+            &Self::REMOTE_FILENAME,
+            Some(res.as_mut_slice())
+        )?;
+        Ok(res)
     }
-    if !base_code.mode().dhcp_ack_received { 
-        return Err(uefi::Error::new(uefi::Status::NOT_READY, ()));
+
+    /// Load the kernel into physical memory and return the entrypoint.
+    ///
+    /// Conventions
+    /// ===========
+    ///
+    /// - The *load address* of a segment is a physical address (which we can
+    ///   expect to be identity mapped when running in the bootloader here)
+    ///
+    /// - Non-loadable segments are ignored
+    ///
+    /// NOTE: This relies on the *load address* for each segment being a 
+    /// physical address (distinct from the *virtual address* for each segment
+    /// that will be used during runtime). 
+    pub unsafe fn load(&self) -> mrld::MrldKernelEntrypoint {
+        use elf::{
+            endian::LittleEndian,
+            abi::PT_LOAD,
+            ElfBytes,
+        };
+        let elf = {
+            let slice = unsafe { 
+                NonNull::slice_from_raw_parts(self.ptr, self.size).as_ref()
+            };
+            ElfBytes::<LittleEndian>::minimal_parse(slice).unwrap()
+        };
+        println!("[*] Kernel entrypoint: {:016x}", elf.ehdr.e_entry);
+        let entrypt = elf.ehdr.e_entry;
+
+        for seg in elf.segments().unwrap() {
+            println!("{} filesz={:08x} memsz={:08x} paddr={:016x} vaddr={:016x} off={:016x}", 
+                seg.p_type, seg.p_filesz, seg.p_memsz, seg.p_paddr, seg.p_vaddr, seg.p_offset
+            );
+            if seg.p_type != PT_LOAD { continue; }
+            if seg.p_paddr == 0 { continue; }
+            let tgt = seg.p_paddr as *mut u8;
+            let src = self.ptr.offset(seg.p_offset as isize);
+            tgt.copy_from(src.as_ptr(), seg.p_filesz as usize);
+        }
+        unsafe { 
+            core::mem::transmute(entrypt)
+        }
     }
-
-    let ack: &DhcpV4Packet = base_code.mode().dhcp_ack.as_ref();
-
-    println!("[*] ciaddr: {:?}", ack.bootp_ci_addr);
-    println!("[*] yiaddr: {:?}", ack.bootp_yi_addr);
-    println!("[*] siaddr: {:?}", ack.bootp_si_addr);
-
-    let server_ip = IpAddress::new_v4(ack.bootp_si_addr);
-    println!("[*] Server IP: {:?}", server_ip);
-
-    // Get the address of the DHCP server, which we *assume* is also acting 
-    // as the TFTP server hosting the kernel image. 
-    if ack.bootp_si_addr == [0, 0, 0, 0] { 
-        println!("[!] DHCPv4 ACK had no server address (SIADDR)?");
-        return Err(uefi::Error::new(uefi::Status::NOT_FOUND, ()));
-    }
-
-    let boot_file = CStr::from_bytes_until_nul(&ack.bootp_boot_file).unwrap();
-    println!("[*] Boot file: {}", boot_file.to_str().unwrap());
-
-    //let mut buf = alloc::boxed::Box::new([0u8; 0x1000]);
-
-    //// Download the kernel from the PXE server
-    //let res = base_code.tftp_read_file(
-    //    &server_ip, 
-    //    &KERNEL_FILENAME, 
-    //    Some(buf.as_mut_slice())
-    //);
-
-    //match res { 
-    //    Ok(_) => {},
-    //    Err(e) => {
-    //        match e.status() {
-    //            uefi::Status::TIMEOUT => {
-    //                println!("[!] PXE timed out while requesting kernel?");
-    //            },
-    //            _ => {
-    //                println!("[!] PXE error {}", e);
-    //            },
-    //        }
-    //        return Err(e);
-    //    }
-    //}
-
-    //drop(buf);
-
-    Ok(())
 }
-
-fn send_udp_msg(base_code: &mut ScopedProtocol<BaseCode>, payload: &[u8]) {
-    let this_ip = base_code.mode().station_ip;
-    let header = [payload.len() as u8];
-    let mut write_src_port = 0;
-    base_code.udp_write(
-        UdpOpFlags::ANY_SRC_PORT,
-        &SERVER_IP,
-        666,
-        None,
-        Some(&this_ip),
-        Some(&mut write_src_port),
-        Some(&header),
-        payload,
-    ).expect("couldn't write udp packet");
-}
-
-
