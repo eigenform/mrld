@@ -87,6 +87,11 @@ fn efi_main() -> Status {
     };
 
     unsafe { 
+        dump_gdt();
+        dump_idt();
+    }
+
+    unsafe { 
         // Exit UEFI boot services
         let uefi_map = uefi::boot::exit_boot_services(
             MemoryType::BOOT_SERVICES_DATA
@@ -102,6 +107,25 @@ fn efi_main() -> Status {
         kernel_entrypt(boot_args.as_ptr());
     }
 }
+
+unsafe fn dump_gdt() {
+    let gdt = mrld::x86::GDT::read();
+    let ptr = gdt.ptr() as *const u64;
+    println!("GDT @ {:016x}, {}", gdt.ptr(), gdt.size());
+    for idx in 0..(gdt.size() / 8) { 
+        println!("  {:016x}", ptr.offset(idx as isize).read());
+    }
+}
+
+unsafe fn dump_idt() {
+    let idt = mrld::x86::IDT::read();
+    let ptr = idt.ptr() as *const u64;
+    println!("IDT @ {:016x}, {}", idt.ptr(), idt.size());
+    for idx in 0..(idt.size() / 8) { 
+        println!("  {:016x}", ptr.offset(idx as isize).read());
+    }
+}
+
 
 fn dump_pgtable(ptr: *const u8) {
     use mrld::paging::*;
