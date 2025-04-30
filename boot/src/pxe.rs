@@ -17,6 +17,7 @@ use uefi::{
 };
 use core::ptr::NonNull;
 
+/// Helper for allocating/downloading/loading an 'mrld' kernel ELF. 
 pub struct KernelImage { 
     /// Pointer to the kernel ELF
     pub ptr: NonNull<u8>,
@@ -107,9 +108,6 @@ impl KernelImage {
     ///
     /// - Non-loadable segments are ignored
     ///
-    /// NOTE: This relies on the *load address* for each segment being a 
-    /// physical address (distinct from the *virtual address* for each segment
-    /// that will be used during runtime). 
     pub unsafe fn load(&self) -> mrld::MrldKernelEntrypoint {
         use elf::{
             endian::LittleEndian,
