@@ -42,8 +42,8 @@ fn efi_main() -> Status {
     bup::do_console_init();
 
     println!("[*] HELO from the mrld boot-stub :^)");
-    println!("[*] Firmware Vendor:   {}", uefi::system::firmware_vendor());
-    println!("[*] Firmware Revision: {}", uefi::system::firmware_revision());
+    println!("  Firmware Vendor:   {}", uefi::system::firmware_vendor());
+    println!("  Firmware Revision: {}", uefi::system::firmware_revision());
 
     // Allocate for boot arguments and synthesize a mutable reference to them.
     let boot_args: &mut MrldBootArgs = unsafe { 
@@ -82,14 +82,11 @@ fn efi_main() -> Status {
     // Build a new set of page tables
     let pml4_ptr = unsafe { 
         let res = bup::build_page_tables();
-        //dump_pgtable(res.as_ptr());
+        dump_pgtable(res.as_ptr());
         res
     };
 
-    unsafe { 
-        dump_gdt();
-        dump_idt();
-    }
+    //unsafe { dump_dtrs(); }
 
     unsafe { 
         // Exit UEFI boot services
@@ -108,21 +105,22 @@ fn efi_main() -> Status {
     }
 }
 
-unsafe fn dump_gdt() {
-    let gdt = mrld::x86::GDT::read();
-    let ptr = gdt.ptr() as *const u64;
-    println!("GDT @ {:016x}, {}", gdt.ptr(), gdt.size());
-    for idx in 0..(gdt.size() / 8) { 
-        println!("  {:016x}", ptr.offset(idx as isize).read());
+unsafe fn dump_dtrs() {
+    println!("[*] Current UEFI GDTR/IDTR:");
+    let gdtr = mrld::x86::GDTR::read();
+    println!("  GDTR @ {:016x?} ({}B)", gdtr.ptr(), gdtr.size());
+    for idx in 0..(gdtr.size() / 8) {
+        let ptr = gdtr.ptr().offset(idx as isize);
+        let val = ptr.read();
+        let d = mrld::x86::gdt::Descriptor::new_from_u64(val);
+        println!("    [{:04}]: {:x?}", idx, d);
     }
-}
 
-unsafe fn dump_idt() {
-    let idt = mrld::x86::IDT::read();
-    let ptr = idt.ptr() as *const u64;
-    println!("IDT @ {:016x}, {}", idt.ptr(), idt.size());
-    for idx in 0..(idt.size() / 8) { 
-        println!("  {:016x}", ptr.offset(idx as isize).read());
+    let idtr = mrld::x86::IDTR::read();
+    println!("  IDTR @ {:016x?} ({}B)", idtr.ptr(), idtr.size());
+    for idx in 0..(idtr.size() / 8) {
+        let ptr = idtr.ptr().offset(idx as isize);
+        println!("    [{:04}]: {:016x}", idx, ptr.read());
     }
 }
 

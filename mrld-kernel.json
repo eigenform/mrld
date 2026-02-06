@@ -5,9 +5,10 @@
     "linker-flavor": "ld.lld",
     "linker": "rust-lld",
 	"pre-link-args": {
-		"ld.lld": [ "--script=mrld-kernel.ld" ]
+		"ld.lld": [ "--script=mrld-kernel.ld", "--Map=kernel.map" ]
 	},
     "llvm-target": "x86_64-unknown-none",
     "max-atomic-width": 64,
-    "target-pointer-width": "64"
+    "target-pointer-width": 64,
+	"code-model": "kernel"
 }

@@ -1,4 +1,32 @@
 
+pub struct CR0;
+impl CR0 { 
+    #[inline(always)]
+    pub unsafe fn write(val: u64) {
+        core::arch::asm!( "mov cr0, rax", in("rax") val);
+    }
+    #[inline(always)]
+    pub unsafe fn read() -> u64 { 
+        let val: u64;
+        core::arch::asm!( "mov rax, cr0", out("rax") val);
+        val
+    }
+}
+
+pub struct CR2;
+impl CR2 { 
+    #[inline(always)]
+    pub unsafe fn write(val: u64) {
+        core::arch::asm!( "mov cr2, rax", in("rax") val);
+    }
+    #[inline(always)]
+    pub unsafe fn read() -> u64 { 
+        let val: u64;
+        core::arch::asm!( "mov rax, cr2", out("rax") val);
+        val
+    }
+}
+
 pub struct CR3;
 impl CR3 { 
     #[inline(always)]

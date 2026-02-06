@@ -11,6 +11,7 @@ pub fn smp_call(cpu_num: usize, func: fn()) -> uefi::Result<()> {
         get_handle_for_protocol,
         open_protocol_exclusive,
     };
+
     let handle = get_handle_for_protocol::<MpServices>()?;
     let mp_services = open_protocol_exclusive::<MpServices>(handle)?;
     mp_services.startup_this_ap(
@@ -21,6 +22,7 @@ pub fn smp_call(cpu_num: usize, func: fn()) -> uefi::Result<()> {
         None
     )
 }
+
 
 extern "efiapi" fn _do_smp_call(content: *mut core::ffi::c_void) {
     let func: fn() = unsafe { core::mem::transmute(content) };

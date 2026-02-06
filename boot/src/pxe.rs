@@ -108,24 +108,27 @@ impl KernelImage {
     ///
     /// - Non-loadable segments are ignored
     ///
+    /// - The entrypoint has the type [`mrld::MrldKernelEntrypoint`]
+    ///
     pub unsafe fn load(&self) -> mrld::MrldKernelEntrypoint {
         use elf::{
             endian::LittleEndian,
             abi::PT_LOAD,
             ElfBytes,
         };
+        println!("[*] Loading kernel ...");
         let elf = {
             let slice = unsafe { 
                 NonNull::slice_from_raw_parts(self.ptr, self.size).as_ref()
             };
             ElfBytes::<LittleEndian>::minimal_parse(slice).unwrap()
         };
-        println!("[*] Kernel entrypoint: {:016x}", elf.ehdr.e_entry);
+        println!("  Kernel entrypoint: {:016x}", elf.ehdr.e_entry);
         let entrypt = elf.ehdr.e_entry;
 
         for seg in elf.segments().unwrap() {
-            println!("{} filesz={:08x} memsz={:08x} paddr={:016x} vaddr={:016x} off={:016x}", 
-                seg.p_type, seg.p_filesz, seg.p_memsz, seg.p_paddr, seg.p_vaddr, seg.p_offset
+            println!("  Kernel segment: p={:016x} v={:016x}",
+                seg.p_paddr, seg.p_vaddr
             );
             if seg.p_type != PT_LOAD { continue; }
             if seg.p_paddr == 0 { continue; }

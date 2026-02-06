@@ -147,27 +147,32 @@ impl PTBuilder {
     }
 }
 
+/// Build a small set of page tables.
+///
+/// 0x0000_0000_0000_0000 - 0x0000_0080_0000_0000
+/// 0xffff_ffff_8000_0000 - 0xffff_ffff_8000_0000
+///
 pub unsafe fn build_page_tables() -> NonNull<u8> {
     use mrld::paging::*;
 
     let mut builder = PTBuilder::new();
     let pml4t = PageTable::<PML4>::mut_ref_from_ptr(builder.alloc());
 
-    // Use 1GiB pages to identity map the low ~512GiB of physical memory
+    // Use 1GiB pages to identity map the low ~512GiB of physical memory.
     let pdpt = PageTable::<PDP>::mut_ref_from_ptr(builder.alloc());
     for idx in 0..512 { 
-        pdpt.set_entry(idx, PageTableEntry::new(
+        pdpt.set_entry(PageTableIdx::new(idx), PageTableEntry::new(
             (idx as u64 * (1<<30)),
             PTFlag::P | PTFlag::RW | PTFlag::PS
         ));
     }
-    pml4t.set_entry(0, PageTableEntry::new(
+    pml4t.set_entry(PageTableIdx::new(0), PageTableEntry::new(
         pdpt.as_ptr() as u64,
         PTFlag::P | PTFlag::RW
     ));
 
     // Create a handful of 2MiB pages for the kernel mapping. 
-    let v = VirtAddr::from_u64(0xffff_c0de_0000_0000);
+    let v = VirtAddr::from_u64(0xffff_ffff_8000_0000);
     let (pml4_idx, pdp_idx, pd_idx, pt_idx) = v.decompose();
     let pdpt = PageTable::<PDP>::mut_ref_from_ptr(builder.alloc());
     let pdt = PageTable::<PD>::mut_ref_from_ptr(builder.alloc());
@@ -180,8 +185,9 @@ pub unsafe fn build_page_tables() -> NonNull<u8> {
         pdt.as_ptr() as u64,
         PTFlag::P | PTFlag::RW
     ));
+
     for idx in 0..32 { 
-        pdt.set_entry(idx, PageTableEntry::new(
+        pdt.set_entry(PageTableIdx::new(idx), PageTableEntry::new(
             0x0400_0000 + (idx as u64 * (1 << 21)),
             PTFlag::P | PTFlag::RW | PTFlag::PS
         ));

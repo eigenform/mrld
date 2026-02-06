@@ -2,14 +2,6 @@
 
 use bitflags::bitflags;
 
-
-
-/// Type whose variants represent a descriptor table.
-pub enum TableIndicator { 
-    Global = 0,
-    Local  = 1,
-}
-
 /// Type whose variants represent x86 privilege levels. 
 pub enum PrivilegeLevel { 
     Ring0 = 0,
@@ -18,13 +10,21 @@ pub enum PrivilegeLevel {
     Ring3 = 3,
 }
 impl PrivilegeLevel { 
-    pub fn from_u16(x: u16) -> Self { 
+    pub const fn from_u16(x: u16) -> Self { 
         match x { 
             0 => Self::Ring0,
             1 => Self::Ring1,
             2 => Self::Ring2,
             3 => Self::Ring3,
             _ => panic!("Invalid privilege level?"),
+        }
+    }
+    pub const fn as_u64(&self) -> u64 { 
+        match self { 
+            Self::Ring0 => 0,
+            Self::Ring1 => 1,
+            Self::Ring2 => 2,
+            Self::Ring3 => 3,
         }
     }
 }
@@ -36,11 +36,17 @@ impl SegmentSelector {
     const TI_BIT: u16   = 0b0000_0000_0000_0100;
     const SI_MASK: u16  = 0b1111_1111_1111_1000;
 
-    /// Create a new selector. 
-    pub const fn new(index: u16, table: TableIndicator, rpl: PrivilegeLevel) 
+    /// Create a new selector where:
+    ///
+    /// - `index` is the index into a descriptor table
+    /// - `rpl` is the requested [`PrivilegeLevel`]
+    /// - `local` indicates a local descriptor table when true
+    ///   (or, a global descriptor table when false)
+    ///
+    pub const fn new(index: u16, local: bool, rpl: PrivilegeLevel) 
         -> Self 
     { 
-        Self(index << 3 | (table as u16) << 2 | rpl as u16)
+        Self(index << 3 | (local as u16) << 2 | rpl as u16)
     }
 
     /// Index into the associated descriptor table.
@@ -53,118 +59,95 @@ impl SegmentSelector {
         (self.0 & Self::SI_MASK) as usize
     }
 
-    /// The descriptor table referenced by this selector.
-    pub fn table_indicator(&self) -> TableIndicator {
-        if self.0 & Self::TI_BIT != 0 {
-            TableIndicator::Local
-        } else {
-            TableIndicator::Global
-        }
+    /// Returns 'true' if this selector refers to a local descriptor table
+    /// (otherwise, 'false' for a global descriptor table). 
+    pub fn is_local(&self) -> bool {
+        (self.0 & Self::TI_BIT) != 0
     }
+
+    pub const fn as_u16(&self) -> u16 { self.0 }
 }
 
-bitflags! { 
-    pub struct DTEFlags: u64 { 
-        /// Granularity
-        const G   = (1 << 55);
-        /// Default operand size
-        const D   = (1 << 54);
-        /// Long mode
-        const L   = (1 << 53);
-        /// Present
-        const P   = (1 << 47);
-        /// Descriptor privilege level
-        const DPL = (0b11 << 45);
-        /// User segment
-        const S   = (1 << 44);
-        /// Conforming
-        const C   = (1 << 42);
-        /// Readable
-        const R   = (1 << 41);
-        /// Accessed
-        const A   = (1 << 40);
-
-    }
+pub trait Segment {
+    unsafe fn write(selector: SegmentSelector);
 }
 
-/// Structure representing the local/global descriptor table registers.
-///
-/// NOTE: x86 instructions for accessing the descriptor table registers 
-/// (`{L,S}GDT` and `{L,S}IDT`) expect a pointer to this structure.
-///
-#[repr(C, packed)]
-pub struct DescriptorTablePointer {
-    /// The number of bytes in the descriptor table
-    pub size: u16,
-    /// The virtual address of the descriptor table
-    pub ptr: u64,
-}
-impl DescriptorTablePointer { 
-    pub fn ptr(&self) -> u64 { 
-        self.ptr
-    }
-    pub fn size(&self) -> u16 { 
-        self.size
-    }
-
-    pub const fn new(size: u16, ptr: u64) -> Self { 
-        Self { size, ptr } 
-    }
-}
-
-/// Helper for interacting with the global descriptor table (GDT).
-pub struct GDT;
-impl GDT { 
-    /// Read the GDT register, returning a [`DescriptorTablePointer`] with 
-    /// the location and size of the GDT. 
-    pub unsafe fn read() -> DescriptorTablePointer { 
-        let res = DescriptorTablePointer::new(0, 0);
-        core::arch::asm!(
-            "sgdt [{}]",
-            in(reg) &res
+/// Code segment. 
+pub struct CS;
+impl Segment for CS { 
+    unsafe fn write(selector: SegmentSelector) {
+        core::arch::asm!(r#"
+            push {s:x}
+            lea {tmp}, [rip + 2f]
+            push {tmp}
+            retfq
+        2:
+        "#,
+        s = in(reg) selector.as_u16(),
+        tmp = lateout(reg) _,
+        options(preserves_flags),
         );
-        res
     }
 }
 
-/// Helper for interacting with the interrupt descriptor table (IDT).
-pub struct IDT;
-impl IDT { 
-    /// Read the IDT register, returning a [`DescriptorTablePointer`] with 
-    /// the location and size of the IDT. 
-    pub unsafe fn read() -> DescriptorTablePointer { 
-        let res = DescriptorTablePointer::new(0, 0);
+pub struct SS;
+impl Segment for SS { 
+    unsafe fn write(selector: SegmentSelector) {
         core::arch::asm!(
-            "sidt [{}]",
-            in(reg) &res
+            "mov ss, {0:x}",
+            in(reg) selector.as_u16(),
+            options(nostack, preserves_flags)
         );
-        res
+    }
+}
+
+pub struct DS;
+impl Segment for DS { 
+    unsafe fn write(selector: SegmentSelector) {
+        core::arch::asm!(
+            "mov ds, {0:x}",
+            in(reg) selector.as_u16(),
+            options(nostack, preserves_flags)
+        );
     }
 }
 
 
+pub struct ES;
+impl Segment for ES { 
+    unsafe fn write(selector: SegmentSelector) {
+        core::arch::asm!(
+            "mov es, {0:x}",
+            in(reg) selector.as_u16(),
+            options(nostack, preserves_flags)
+        );
 
-/// A 64-bit entry in a descriptor table. 
-pub struct DescriptorTableEntry(u64);
-impl DescriptorTableEntry {
-    pub const fn from_u64(x: u64) -> Self { 
-        Self(x)
     }
 }
 
-/// The "global" descriptor table. 
-pub struct GlobalDescriptorTable<const SZ: usize> { 
-    entries: [DescriptorTableEntry; SZ],
-}
-impl <const SZ: usize> GlobalDescriptorTable<SZ> {
-    //pub const fn new() -> Self { 
-    //    Self { 
-    //    }
-    //}
+
+pub struct FS;
+impl Segment for FS { 
+    unsafe fn write(selector: SegmentSelector) {
+        core::arch::asm!(
+            "mov fs, {0:x}",
+            in(reg) selector.as_u16(),
+            options(nostack, preserves_flags)
+        );
+
+    }
 }
 
-pub struct LocalDescriptorTable { 
-}
+pub struct GS;
+impl Segment for GS { 
+    unsafe fn write(selector: SegmentSelector) {
+        core::arch::asm!(
+            "mov gs, {0:x}",
+            in(reg) selector.as_u16(),
+            options(nostack, preserves_flags)
+        );
 
+    }
+}
 
 

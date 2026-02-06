@@ -1,5 +1,7 @@
 #![no_std]
 #![allow(unsafe_op_in_unsafe_fn)]
+#![feature(abi_x86_interrupt)]
+#![feature(adt_const_params)]
 
 pub mod paging;
 pub mod physmem;

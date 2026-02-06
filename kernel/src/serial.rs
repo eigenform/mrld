@@ -1,27 +1,7 @@
 //! Interfaces to the serial ports exposed in x86 I/O port space.
 
-use crate::x86;
+use mrld::x86::io::*;
 use spin;
-
-/// Representing a register in the x86 I/O port space. 
-pub struct IoPort(u16);
-impl IoPort { 
-    pub const fn declare(port: u16) -> Self { 
-        Self(port)
-    }
-
-    /// Write a byte to this register.
-    #[inline(never)]
-    pub unsafe fn out8(&self, val: u8) {
-        x86::out8(self.0, val);
-    }
-
-    /// Read a byte from this register.
-    #[inline(never)]
-    pub unsafe fn in8(&self) -> u8 {
-        x86::in8(self.0)
-    }
-}
 
 /// Representing a serial port in the x86 I/O port address space. 
 pub struct SerialPort<const PORT: u16> { 
@@ -34,30 +14,30 @@ pub struct SerialPort<const PORT: u16> {
 // I/O port address space whatsoever. This 
 impl <const PORT: u16> SerialPort<PORT> {
     /// RX/TX buffer
-    const DATA:     IoPort = IoPort::declare(PORT + 0);
+    const DATA:     IoPort = IoPort::new(PORT + 0);
     /// Interrupt enable
-    const INTR_EN:  IoPort = IoPort::declare(PORT + 1);
+    const INTR_EN:  IoPort = IoPort::new(PORT + 1);
 
     /// Baud divisor (least-significant byte)
-    const BAUD_LSB: IoPort = IoPort::declare(PORT + 0);
+    const BAUD_LSB: IoPort = IoPort::new(PORT + 0);
     /// Baud divisor (most-significant byte)
-    const BAUD_MSB: IoPort = IoPort::declare(PORT + 1);
+    const BAUD_MSB: IoPort = IoPort::new(PORT + 1);
 
     /// Interrupt Identifier
-    const INTR_ID:  IoPort = IoPort::declare(PORT + 2);
+    const INTR_ID:  IoPort = IoPort::new(PORT + 2);
     /// FIFO control
-    const FIFO_CTL: IoPort = IoPort::declare(PORT + 2);
+    const FIFO_CTL: IoPort = IoPort::new(PORT + 2);
 
     /// Line control
-    const LINE_CTL: IoPort = IoPort::declare(PORT + 3);
+    const LINE_CTL: IoPort = IoPort::new(PORT + 3);
     /// Modem control
-    const MODM_CTL: IoPort = IoPort::declare(PORT + 4);
+    const MODM_CTL: IoPort = IoPort::new(PORT + 4);
     /// Line status
-    const LINE_STS: IoPort = IoPort::declare(PORT + 5);
+    const LINE_STS: IoPort = IoPort::new(PORT + 5);
     /// Modem status
-    const MODM_STS: IoPort = IoPort::declare(PORT + 6);
+    const MODM_STS: IoPort = IoPort::new(PORT + 6);
     /// Scratch register
-    const SCRATCH:  IoPort = IoPort::declare(PORT + 7);
+    const SCRATCH:  IoPort = IoPort::new(PORT + 7);
 
     const fn new() -> Self { 
         Self { initialized: false, }

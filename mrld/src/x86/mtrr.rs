@@ -32,11 +32,11 @@ impl <I: MTRRId> VariableMTRR<I> {
     }
     #[inline(always)]
     pub unsafe fn read_base() -> u64 { 
-        rdmsr(Self::MSR_MTRR_VAR_BASE)
+        Msr::rdmsr(Self::MSR_MTRR_VAR_BASE)
     }
     #[inline(always)]
     pub unsafe fn read_mask() -> u64 { 
-        rdmsr(Self::MSR_MTRR_VAR_MASK)
+        Msr::rdmsr(Self::MSR_MTRR_VAR_MASK)
     }
 }
 

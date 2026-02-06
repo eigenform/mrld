@@ -1,7 +1,7 @@
 # mrld
 
-`mrld` (like "emerald") is a UEFI bootloader and kernel for bare-metal x86 
-experiments.
+`mrld` (like "emerald") is a UEFI bootloader and tiny "kernel" for bare-metal 
+x86 experiments.
 
 ```
 boot/            - mrld UEFI bootloader
