@@ -10,12 +10,13 @@ use uefi::{
     },
     proto::{
         network::{
-            IpAddress,
+            //IpAddress,
             pxe::{ BaseCode, DhcpV4Packet },
         },
     },
 };
 use core::ptr::NonNull;
+use core::net::{ IpAddr, Ipv4Addr };
 
 /// Helper for allocating/downloading/loading an 'mrld' kernel ELF. 
 pub struct KernelImage { 
@@ -27,16 +28,10 @@ pub struct KernelImage {
 impl KernelImage {
     /// Fixed remote filename on the PXE server
     pub const REMOTE_FILENAME: &'static CStr8 = cstr8!("mrld-kernel");
-    pub const MEMORY_TYPE: MemoryType = MemoryType::custom(0x8000_0001);
 
     pub fn as_mut_slice(&mut self) -> &mut [u8] { 
         unsafe { 
             NonNull::slice_from_raw_parts(self.ptr, self.size).as_mut()
-        }
-    }
-    pub fn as_slice(&self) -> &[u8] { 
-        unsafe { 
-            NonNull::slice_from_raw_parts(self.ptr, self.size).as_ref()
         }
     }
 }
@@ -62,29 +57,29 @@ impl KernelImage {
                 }
             },
         }
-        if !base_code.mode().dhcp_ack_received { 
+        if !base_code.mode().dhcp_ack_received() { 
             return Err(uefi::Error::new(uefi::Status::NOT_READY, ()));
         }
 
         // Get the address of the DHCP server, which we *assume* is also 
         // acting as the TFTP server hosting our kernel image. 
-        let ack: &DhcpV4Packet = base_code.mode().dhcp_ack.as_ref();
+        let ack: &DhcpV4Packet = base_code.mode().dhcp_ack().as_ref();
         if ack.bootp_si_addr == [0, 0, 0, 0] { 
             println!("[!] DHCPv4 ACK had no server address (SIADDR)?");
             return Err(uefi::Error::new(uefi::Status::NOT_FOUND, ()));
         }
 
-        let server_ip = IpAddress::new_v4(ack.bootp_si_addr);
+        let server_ip = IpAddr::V4(Ipv4Addr::from_octets(ack.bootp_si_addr));
         let kernel_sz = base_code.tftp_get_file_size(
             &server_ip, 
             &Self::REMOTE_FILENAME
         )?;
-        let num_pages = (kernel_sz / crate::PAGE_SZ as u64) + 1;
         let ptr: NonNull<u8> = uefi::boot::allocate_pages(
             AllocateType::AnyPages,
-            MemoryType::BOOT_SERVICES_DATA,
-            num_pages as usize
-        ).unwrap();
+            MemoryType::LOADER_DATA, 
+            (kernel_sz as usize / uefi::boot::PAGE_SIZE) + 1,
+        )?;
+
 
         let mut res = KernelImage { 
             size: kernel_sz as usize,
@@ -95,6 +90,16 @@ impl KernelImage {
             &Self::REMOTE_FILENAME,
             Some(res.as_mut_slice())
         )?;
+
+        match base_code.stop() {
+            Ok(_) => {},
+            Err(e) => {
+                match e.status() { 
+                    _ => return Err(e),
+                }
+            },
+        }
+
         Ok(res)
     }
 
@@ -110,7 +115,7 @@ impl KernelImage {
     ///
     /// - The entrypoint has the type [`mrld::MrldKernelEntrypoint`]
     ///
-    pub unsafe fn load(&self) -> mrld::MrldKernelEntrypoint {
+    pub unsafe fn load(&self) -> uefi::Result<mrld::MrldKernelEntrypoint> {
         use elf::{
             endian::LittleEndian,
             abi::PT_LOAD,
@@ -126,6 +131,7 @@ impl KernelImage {
         println!("  Kernel entrypoint: {:016x}", elf.ehdr.e_entry);
         let entrypt = elf.ehdr.e_entry;
 
+
         for seg in elf.segments().unwrap() {
             println!("  Kernel segment: p={:016x} v={:016x}",
                 seg.p_paddr, seg.p_vaddr
@@ -133,11 +139,17 @@ impl KernelImage {
             if seg.p_type != PT_LOAD { continue; }
             if seg.p_paddr == 0 { continue; }
             let tgt = seg.p_paddr as *mut u8;
+
+            if seg.p_memsz > seg.p_filesz { 
+                tgt.write_bytes(0, seg.p_memsz as _);
+            }
+
             let src = self.ptr.offset(seg.p_offset as isize);
             tgt.copy_from(src.as_ptr(), seg.p_filesz as usize);
         }
         unsafe { 
-            core::mem::transmute(entrypt)
+            Ok(core::mem::transmute(entrypt))
         }
     }
 }
+

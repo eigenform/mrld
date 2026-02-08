@@ -3,7 +3,26 @@ use core::alloc::*;
 use core::sync::atomic::*;
 use mrld::x86::*;
 use mrld::paging::*;
+use mrld::physmem::*;
 use crate::println;
+
+pub struct MemManager { 
+}
+impl MemManager { 
+    pub unsafe fn init(map: &MrldMemoryMap) -> Self { 
+        for entry in &map.entries { 
+            if !entry.is_valid() { 
+                continue;
+            }
+            if entry.kind == MrldMemoryKind::Available {
+                println!("{:016x?}", entry);
+            }
+        }
+
+        Self { 
+        }
+    }
+}
 
 pub struct MrldAllocator { 
     next: AtomicPtr<u8>
@@ -13,7 +32,7 @@ unsafe impl GlobalAlloc for MrldAllocator {
         panic!("alloc unimpl, next={:016x?}", self.next);
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        panic!("alloc unimpl, next={:016x?}", self.next);
+        panic!("dealloc unimpl, next={:016x?}", self.next);
     }
 }
 

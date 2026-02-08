@@ -29,6 +29,9 @@ There are three parts to this:
 - A kernel using the [`mrld-kernel.json`](./mrld-kernel.json) target
 - A support library (which should be compatible with both targets)
 
+The `mrld-kernel` target uses `code-model=kernel`. [Presumably, apparently] 
+this means that when linking, all symbols are expected to have values in 
+the range above `0xffff_ffff_8000_0000`. 
 
 ## Using this Project
 

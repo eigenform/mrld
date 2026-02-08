@@ -19,7 +19,7 @@ enum XtaskCommand {
     Qemu,
 
     /// Start PXE services on the host machine
-    Pxe(pxe::PxeArgs),
+    Pxe,
 
     /// Run 'picocom' (for communicating with a target over /dev/ttyUSB0)
     Console,
@@ -44,6 +44,25 @@ fn build_boot(root: &Path) -> Result<()> {
             return Err(anyhow!("Bootloader build error"));
         }
     }
+
+    let cmd = Command::new("cargo")
+        .args([
+            "build", 
+            "--package=mrld-boot",
+            "-Z", "build-std=core,alloc,compiler_builtins",
+            "--target=x86_64-unknown-uefi",
+        ])
+        .current_dir(root)
+        .spawn()?
+        .wait()?;
+    if let Some(code) = cmd.code() {
+        if code != 0 { 
+            return Err(anyhow!("Bootloader build error"));
+        }
+    }
+
+
+
     Ok(())
 }
 
@@ -127,6 +146,9 @@ fn run_qemu(root: &Path) -> Result<()> {
         "-drive", drive1.as_str(),
         "-device", "virtio-net-pci,netdev=net0",
         "-netdev", netdev.as_str(),
+
+        // Disable COM1 (0x3f8), use COM2 (0x2f8) instead
+        "-serial", "none",
         "-serial", "stdio",
         "-boot", "n",
     ];
@@ -159,9 +181,8 @@ fn main() -> Result<()> {
         XtaskCommand::Qemu => {
             run_qemu(&root)?;
         },
-        XtaskCommand::Pxe(args) => {
-            //pxe::write_dhcpd_conf(&args)?;
-            unimplemented!();
+        XtaskCommand::Pxe => {
+            //pxe::start(&root)?;
         }
         XtaskCommand::Console => {
             run_picocom()?;

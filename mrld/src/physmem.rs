@@ -6,14 +6,14 @@
 
 use core::ops::Range;
 
-/// Base of physical memory allocated (by the bootloader) for [`MrldBootArgs`].
-pub const BOOT_ARGS_PHYS_BASE: u64  = 0x0000_0000_0010_0000;
+///// Base of physical memory allocated (by the bootloader) for [`MrldBootArgs`].
+//pub const BOOT_ARGS_PHYS_BASE: u64  = 0x0000_0000_0010_0000;
 
-/// Base of physical memory allocated (by the bootloader) for page tables. 
-pub const PAGE_TABLE_PHYS_BASE: u64 = 0x0000_0000_0020_0000;
+///// Base of physical memory allocated (by the bootloader) for page tables. 
+//pub const PAGE_TABLE_PHYS_BASE: u64 = 0x0000_0000_0020_0000;
 
-/// Base of physical memory allocated (by the bootloader) for the kernel.
-pub const KERNEL_PHYS_BASE: u64     = 0x0000_0000_0020_0000;
+///// Base of physical memory allocated (by the bootloader) for the kernel.
+//pub const KERNEL_PHYS_BASE: u64     = 0x0000_0000_0020_0000;
 
 
 /// Describes the kind of physical memory region presented to the kernel.
@@ -71,7 +71,7 @@ impl MrldMemoryDesc {
 #[repr(C)]
 pub struct MrldMemoryMap { 
     /// Set of physical memory regions.
-    pub entries: [MrldMemoryDesc; 128],
+    pub entries: [MrldMemoryDesc; Self::NUM_ENTRIES],
 }
 impl MrldMemoryMap { 
     /// Fixed number of entries in this memory map.
@@ -88,48 +88,5 @@ impl MrldMemoryMap {
         }
     }
 }
-
-pub enum FrameSize {
-    Size4KiB,
-    Size2MiB,
-    Size1GiB,
-}
-impl FrameSize { 
-    const SZ_4KIB: u64 = (1 << 12);
-    const SZ_2MIB: u64 = (1 << 21);
-    const SZ_1GIB: u64 = (1 << 30);
-    pub fn as_usize(&self) -> usize { 
-        match self { 
-            Self::Size4KiB => Self::SZ_4KIB as usize,
-            Self::Size2MiB => Self::SZ_2MIB as usize,
-            Self::Size1GiB => Self::SZ_1GIB as usize,
-        }
-    }
-    pub fn from_range(range: Range<u64>) -> Self { 
-        let sz = range.end - range.start;
-        match sz { 
-            Self::SZ_4KIB => Self::Size4KiB,
-            Self::SZ_2MIB => Self::Size2MiB,
-            Self::SZ_1GIB => Self::Size1GiB,
-            _ => unreachable!()
-        }
-    }
-}
-
-pub struct Frame { 
-    range: Range<u64>,
-}
-impl Frame { 
-}
-
-/// Physical memory allocator. 
-pub struct PhysicalAllocator { 
-    /// The *contiguous* range of physical addresses managed by this allocator. 
-    range: Range<u64>,
-
-}
-impl PhysicalAllocator { 
-}
-
 
 

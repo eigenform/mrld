@@ -9,13 +9,13 @@ impl IoPort {
     }
 
     /// Write a byte to this register.
-    #[inline(never)]
+    #[inline(always)]
     pub unsafe fn out8(&self, val: u8) {
         Io::out8(self.0, val);
     }
 
     /// Read a byte from this register.
-    #[inline(never)]
+    #[inline(always)]
     pub unsafe fn in8(&self) -> u8 {
         Io::in8(self.0)
     }
@@ -29,6 +29,7 @@ impl Io {
             "out dx, al",
             in("al") val,
             in("dx") port,
+            options(nomem, nostack, preserves_flags)
         );
     }
 
@@ -39,6 +40,7 @@ impl Io {
             "in al, dx",
             in("dx") port,
             out("al") res,
+            options(nomem, nostack, preserves_flags)
         );
         res
     }

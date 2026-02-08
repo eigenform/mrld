@@ -7,4 +7,3 @@ edition = "2024"
 spin = "0.10.0"
 acpi = "6.0.1"
 mrld = { path = "../mrld" }
-

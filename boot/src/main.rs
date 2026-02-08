@@ -27,18 +27,11 @@ use uefi::println;
 use uefi::runtime::ResetType;
 use uefi::boot::{ AllocateType, MemoryType };
 use mrld::{ MrldBootArgs, };
-
-pub const BOOT_ARGS_DATA:  MemoryType = MemoryType::custom(0x8000_0000);
-pub const KERNEL_IMG_DATA: MemoryType = MemoryType::custom(0x8000_0001);
-pub const PAGE_TABLE_DATA: MemoryType = MemoryType::custom(0x8000_0002);
-
-/// Default page size (4KiB)
-pub const PAGE_SZ: usize = (1 << 12);
+use mrld::x86;
 
 #[entry]
 fn efi_main() -> Status {
     uefi::helpers::init().unwrap();
-
     bup::do_console_init();
 
     println!("[*] HELO from the mrld boot-stub :^)");
@@ -47,14 +40,12 @@ fn efi_main() -> Status {
 
     // Allocate for boot arguments and synthesize a mutable reference to them.
     let boot_args: &mut MrldBootArgs = unsafe { 
-        let num_pages: usize = {
-            (core::mem::size_of::<MrldBootArgs>() / PAGE_SZ) + 1
-        };
         let ptr: NonNull<u8> = uefi::boot::allocate_pages(
             AllocateType::AnyPages,
-            BOOT_ARGS_DATA,
-            num_pages
+            MemoryType::LOADER_DATA,
+            (core::mem::size_of::<MrldBootArgs>() / uefi::boot::PAGE_SIZE) + 1
         ).unwrap();
+
         let mut boot_args_ptr: NonNull<MrldBootArgs> = ptr.cast();
         boot_args_ptr.write(MrldBootArgs::new_empty());
         boot_args_ptr.as_mut()
@@ -73,28 +64,28 @@ fn efi_main() -> Status {
     // Download the kernel image via PXE.
     let img = pxe::KernelImage::download().map_err(|e| {
         println!("[!] Error downloading kernel: {}", e);
-        wait_for_shutdown();
+        bup::wait_for_shutdown();
     }).unwrap();
+    println!("[!] Downloaded kernel ...");
 
     // Load the kernel into physical memory and find the entrypoint
-    let kernel_entrypt = unsafe { img.load() };
+    let kernel_entrypt = unsafe { img.load().unwrap() };
+    println!("[!] Loaded kernel into memory ...");
 
     // Build a new set of page tables
     let pml4_ptr = unsafe { 
         let res = bup::build_page_tables();
-        dump_pgtable(res.as_ptr());
+        //dump_pgtable(res.as_ptr());
         res
     };
+    println!("[!] Wrote provisional page tables ...");
 
-    //unsafe { dump_dtrs(); }
 
     unsafe { 
         // Exit UEFI boot services
-        let uefi_map = uefi::boot::exit_boot_services(
-            MemoryType::BOOT_SERVICES_DATA
-        );
+        let uefi_map = uefi::boot::exit_boot_services(None);
 
-        // Copy over the memory map into our boot args
+        // Build the memory map passed to the kernel
         bup::build_memory_map(&uefi_map, &mut boot_args.memory_map);
 
         // Switch to the new set of page tables
@@ -105,60 +96,4 @@ fn efi_main() -> Status {
     }
 }
 
-unsafe fn dump_dtrs() {
-    println!("[*] Current UEFI GDTR/IDTR:");
-    let gdtr = mrld::x86::GDTR::read();
-    println!("  GDTR @ {:016x?} ({}B)", gdtr.ptr(), gdtr.size());
-    for idx in 0..(gdtr.size() / 8) {
-        let ptr = gdtr.ptr().offset(idx as isize);
-        let val = ptr.read();
-        let d = mrld::x86::gdt::Descriptor::new_from_u64(val);
-        println!("    [{:04}]: {:x?}", idx, d);
-    }
-
-    let idtr = mrld::x86::IDTR::read();
-    println!("  IDTR @ {:016x?} ({}B)", idtr.ptr(), idtr.size());
-    for idx in 0..(idtr.size() / 8) {
-        let ptr = idtr.ptr().offset(idx as isize);
-        println!("    [{:04}]: {:016x}", idx, ptr.read());
-    }
-}
-
-
-fn dump_pgtable(ptr: *const u8) {
-    use mrld::paging::*;
-    let pml4_table = unsafe { 
-        PageTable::<PML4>::ref_from_ptr(ptr) 
-    };
-    println!("PML4 Table: {:016x?}", pml4_table.as_ptr());
-    let mut cnt = 0;
-    for pml4e in pml4_table.entries() {
-        if pml4e.invalid() {
-            continue;
-        }
-        if cnt > 0 { break; }
-        println!("  {:?}", pml4e);
-        let pdp_table = unsafe { 
-            PageTable::<PDP>::ref_from_ptr(pml4e.address() as *const u8)
-        };
-        for pdpe in pdp_table.entries() {
-            println!("   {:?}", pdpe);
-        }
-        cnt += 1;
-    }
-}
-
-
-/// Wait [indefinitely] for user input, then shut down the machine.
-fn wait_for_shutdown() -> ! {
-    println!("[*] Press any key to shut down the machine ...");
-    let key_event = uefi::system::with_stdin(|stdin| { 
-        stdin.wait_for_key_event().unwrap()
-    });
-    let mut events = [ key_event ];
-    uefi::boot::wait_for_event(&mut events).unwrap();
-    println!("[*] Shutting down in five seconds ...");
-    uefi::boot::stall(5_000_000);
-    uefi::runtime::reset(ResetType::SHUTDOWN, Status::SUCCESS, None);
-}
 

@@ -1,3 +1,5 @@
+//! Support crate for the mrld bootloader and kernel.
+
 #![no_std]
 #![allow(unsafe_op_in_unsafe_fn)]
 #![feature(abi_x86_interrupt)]

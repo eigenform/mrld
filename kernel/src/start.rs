@@ -64,7 +64,7 @@ pub extern "sysv64" fn _start(args: *const MrldBootArgs) -> ! { unsafe {
         sub rsp, 4096
 
         // Jump into the kernel - execution continues in 'src/main.rs'
-        call {main}
+        jmp {main}
 
     3:
         // Unreachable

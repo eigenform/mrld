@@ -59,23 +59,28 @@ pub extern "sysv64" fn kernel_main(args: *const MrldBootArgs) -> ! {
 
     unsafe { 
         // Initialize the COM1 port
-        serial::COM1.lock().init();
+        serial::COM2.lock().init();
 
-        // Initialize the new IDT
+
+        println!("[*] HELO from the mrld kernel :^)");
+
         interrupt::IdtManager::init();
-
-        acpi::AcpiManager::init(args.rsdp_addr);
+        mm::MemManager::init(&args.memory_map);
+        //acpi::AcpiManager::init(args.rsdp_addr);
     }
 
     let patch_level = unsafe { 
         Msr::rdmsr(Msr::PATCH_LEVEL)
     };
 
-    println!("[*] HELO from the mrld kernel :^)");
+    //println!("[*] HELO from the mrld kernel :^)");
     println!("Patch level {:08x}", patch_level);
     println!("[*] Waiting for messages ...");
 
-    unsafe { mm::MrldPageTable::dump(); }
+    unsafe { 
+        //mm::MrldPageTable::dump(); 
+    }
+
 
 
     let x = unsafe { 
