@@ -11,7 +11,7 @@ pub static IDT: spin::Mutex<Idt> = {
     spin::Mutex::new(Idt::init())
 };
 
-
+/// Helper for managing the interrupt descriptor table.
 pub struct IdtManager;
 impl IdtManager { 
     /// Initialize the IDT and update the IDTR
@@ -55,7 +55,7 @@ impl IdtManager {
 fn generic_handler_panic(s: &'static str, f: &InterruptStackFrame, err: Option<u64>) {
     println!("err={:016x?}", err);
     println!("CR2={:016x}", unsafe { CR2::read() });
-    println!("{:#x?}", f);
+    println!("{:x?}", f);
     panic!("panic for #{} at {:016x}!", s, f.rip);
 }
 
@@ -73,8 +73,6 @@ macro_rules! decl_generic_handler_err {
         }
     }
 }
-
-
 
 decl_generic_handler!(de_handler, "de");
 decl_generic_handler!(db_handler, "db");

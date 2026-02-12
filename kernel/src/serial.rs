@@ -59,12 +59,14 @@ impl <const PORT: u16> SerialPort<PORT> {
         Self::INTR_EN.out8(0b0000_0000);
     }
 
+    /// Send a byte to this port
     pub unsafe fn send_byte(&mut self, byte: u8) {
         // Wait for the TX buffer to drain
         while (Self::LINE_STS.in8() & 0b0010_0000) == 0 {}
         Self::DATA.out8(byte);
     }
 
+    /// Send a slice of bytes to this port
     pub unsafe fn send_bytes(&mut self, bytes: &[u8]) {
         for byte in bytes { 
             self.send_byte(*byte);

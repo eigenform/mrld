@@ -1,89 +1,79 @@
+//! Memory management. 
+
 
 use core::alloc::*;
+use core::mem::MaybeUninit;
 use core::sync::atomic::*;
+use core::ops::Range;
+
 use mrld::x86::*;
+use mrld::MrldBootArgs;
 use mrld::paging::*;
 use mrld::physmem::*;
+
 use crate::println;
+use spin::Mutex;
+use uefi_raw::table::boot::{
+    MemoryType, MemoryAttribute, MemoryDescriptor
+};
 
-pub struct MemManager { 
-}
-impl MemManager { 
-    pub unsafe fn init(map: &MrldMemoryMap) -> Self { 
-        for entry in &map.entries { 
-            if !entry.is_valid() { 
-                continue;
-            }
-            if entry.kind == MrldMemoryKind::Available {
-                println!("{:016x?}", entry);
-            }
-        }
+/// The base of kernel image mapping
+pub const KERNEL_TEXT_BASE: u64 = 0xffff_ffff_8000_0000;
+/// The base of the kernel heap mapping
+pub const KERNEL_HEAP_BASE: u64 = 0xffff_ffd0_0000_0000;
+/// The size of the kernel heap mapping
+pub const KERNEL_HEAP_SIZE: usize = PageSize::Size1GiB.as_usize();
 
-        Self { 
-        }
-    }
-}
-
-pub struct MrldAllocator { 
-    next: AtomicPtr<u8>
-}
-unsafe impl GlobalAlloc for MrldAllocator { 
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 { 
-        panic!("alloc unimpl, next={:016x?}", self.next);
-    }
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        panic!("dealloc unimpl, next={:016x?}", self.next);
-    }
-}
-
-unsafe extern "C" { 
-    #[link_name = "_kernel_heap_base"]
-    pub static KERNEL_HEAP_BASE: u64;
-
-}
-
+/// The global allocator.
 #[global_allocator]
-pub static ALC: MrldAllocator = unsafe {
-    MrldAllocator { 
-        next: AtomicPtr::new(&KERNEL_HEAP_BASE as *const u64 as _)
+pub static HEAP: MrldHeap = {
+    MrldHeap { 
+        next: AtomicPtr::new(0 as _),
+        end: AtomicPtr::new(0 as _),
     }
 };
 
-pub struct MrldPageTable;
-impl MrldPageTable { 
-    pub unsafe fn dump() { 
-        let pml4_ptr = mrld::x86::CR3::read();
-        let mut pml4 = PageTable::<PML4>::ref_from_ptr(pml4_ptr as _);
+/// Trivial bump allocator. 
+pub struct MrldHeap { 
+    next: AtomicPtr<u8>,
+    end:  AtomicPtr<u8>,
+}
+impl MrldHeap { 
 
-        println!("PML4 Table: {:016x?}", pml4.as_ptr());
-        for (pml4_idx, pml4e) in pml4.iter_entries() {
-            if pml4e.invalid() {
-                continue;
-            }
-
-            let vaddr = VirtAddr::canonical_from_index(
-                pml4_idx, 
-                PageTableIdx::from(0usize), 
-                PageTableIdx::from(0usize), 
-                PageTableIdx::from(0usize)
-            );
-            println!("  {:?} {:016x?}", pml4e, vaddr);
-            let pdp_table = unsafe { 
-                PageTable::<PDP>::ref_from_ptr(pml4e.address() as *const u8)
-            };
-            for (pdp_idx, pdpe) in pdp_table.iter_entries() {
-                let vaddr = VirtAddr::canonical_from_index(
-                    pml4_idx, 
-                    pdp_idx,
-                    PageTableIdx::from(0usize), 
-                    PageTableIdx::from(0usize)
-                );
-                if pdpe.invalid() { 
-                    continue;
-                }
-                println!("   {:?} {:016x?}", pdpe, vaddr);
-            }
-        }
-
+    /// Initialize this structure. 
+    ///
+    /// NOTE: The size and location of backing memory is fixed here.
+    ///
+    /// NOTE: Subsequent use of these pointers assumes that the kernel heap
+    /// mapping is actually configured in page tables.
+    pub unsafe fn init(&self) {
+        self.next.store(KERNEL_HEAP_BASE as _, Ordering::SeqCst);
+        self.end.store(
+            (KERNEL_HEAP_BASE + KERNEL_HEAP_SIZE as u64) as *mut u8, 
+            Ordering::SeqCst
+        );
     }
 }
+
+unsafe impl GlobalAlloc for MrldHeap { 
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 { 
+        let base = self.next.load(Ordering::SeqCst);
+        let end = self.end.load(Ordering::SeqCst);
+        let algn = base.align_offset(layout.align());
+        let next_base = base.offset(
+            algn as isize + layout.size() as isize
+        );
+
+        if next_base >= end { 
+            panic!("uhhhhh");
+        }
+
+        self.next.store(next_base, Ordering::SeqCst);
+        next_base
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        // it's cheaper to just do nothing ¯\_(ツ)_/¯
+    }
+}
+

@@ -1,22 +1,90 @@
 
-
 use core::ptr::NonNull;
 use acpi::{
     Handler, Handle, PhysicalMapping, PciAddress,
     aml,
+    AcpiTables,
+    AcpiTable,
+
+    rsdp::Rsdp,
+    sdt::{
+        Signature,
+        fadt::Fadt,
+        madt::*,
+    },
+            
+};
+use crate::println;
+use spin::Mutex;
+use mrld::x86::io::Io;
+use core::mem::MaybeUninit;
+use core::sync::atomic::*;
+
+pub static ACPI: AcpiManager = {
+    AcpiManager::new()
 };
 
-
-pub struct AcpiManager;
+pub struct AcpiManager { 
+    /// Physical address of the RSDP
+    rsdp: AtomicU64,
+    /// Identity-mapped pointer to the FADT
+    fadt: AtomicPtr<Fadt>,
+    /// Identity-mapped pointer to the MADT
+    madt: AtomicPtr<Madt>,
+}
 impl AcpiManager { 
-    pub fn init(rsdp_addr: u64) {
+    pub const fn new() -> Self { 
+        Self { 
+            rsdp: AtomicU64::new(0),
+            fadt: AtomicPtr::new(core::ptr::null_mut()),
+            madt: AtomicPtr::new(core::ptr::null_mut()),
+        }
+    }
+
+    /// Initialize this structure, using the physical address of the RSDP
+    /// to find pointers to other relevant ACPI tables
+    pub unsafe fn init(&self, rsdp_addr: u64) {
+        let tables: AcpiTables<MrldAcpiHandler>;
+
+        let Ok(tables): Result<AcpiTables<MrldAcpiHandler>, _> = 
+            AcpiTables::from_rsdp(MrldAcpiHandler, rsdp_addr as _) 
+        else {
+            panic!("Couldn't parse ACPI tables from RSDP?");
+        };
+
+        for (phys, e) in tables.table_headers() { 
+            println!("{:016x}: {}", phys, e.signature.as_str());
+        }
+ 
+        let Some(x) = tables.find_table::<Fadt>() else {
+            panic!("Couldn't find FADT?");
+        };
+        let mut fadt_ptr: NonNull<Fadt> = x.virtual_start;
+
+        let Some(x) = tables.find_table::<Madt>() else {
+            panic!("Couldn't find MADT?");
+        };
+        let mut madt_ptr: NonNull<Madt> = x.virtual_start;
+
+        let x = core::pin::Pin::static_ref(madt_ptr.as_ref());
+        for entry in x.entries() { 
+            println!("{:x?}", x);
+        }
+
+        self.rsdp.store(rsdp_addr, Ordering::SeqCst);
+        self.fadt.store(fadt_ptr.as_mut(), Ordering::SeqCst);
+        self.madt.store(madt_ptr.as_mut(), Ordering::SeqCst);
+
     }
 }
 
 
+/// Helper struct implementing [`acpi::Handler`].
 #[derive(Clone, Copy)]
 pub struct MrldAcpiHandler;
 impl acpi::Handler for MrldAcpiHandler {
+
+    // NOTE: This assumes that these regions are identity-mapped. 
     unsafe fn map_physical_region<T>(&self, 
         paddr: usize, size: usize,
     ) -> PhysicalMapping<Self, T> {
@@ -61,23 +129,23 @@ impl acpi::Handler for MrldAcpiHandler {
     }
 
     fn read_io_u8(&self, port: u16) -> u8 {
-        unimplemented!()
+        unsafe { Io::in8(port) }
     }
     fn read_io_u16(&self, port: u16) -> u16 {
-        unimplemented!()
+        unsafe { Io::in16(port) }
     }
     fn read_io_u32(&self, port: u16) -> u32 {
-        unimplemented!()
+        unsafe { Io::in32(port) }
     }
 
     fn write_io_u8(&self, port: u16, val: u8) {
-        unimplemented!()
+        unsafe { Io::out8(port, val) }
     }
     fn write_io_u16(&self, port: u16, val: u16) {
-        unimplemented!()
+        unsafe { Io::out16(port, val) }
     }
     fn write_io_u32(&self, port: u16, val: u32) {
-        unimplemented!()
+        unsafe { Io::out32(port, val) }
     }
 
 

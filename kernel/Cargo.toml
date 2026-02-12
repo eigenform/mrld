@@ -3,7 +3,11 @@ name = "mrld-kernel"
 version = "0.1.0"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [dependencies]
 spin = "0.10.0"
 acpi = "6.0.1"
 mrld = { path = "../mrld" }
+uefi-raw = "0.13.0"

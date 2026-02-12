@@ -24,10 +24,9 @@ mod smp;
 use core::ptr::NonNull;
 use uefi::prelude::*;
 use uefi::println;
-use uefi::runtime::ResetType;
 use uefi::boot::{ AllocateType, MemoryType };
+use uefi::mem::memory_map::*;
 use mrld::{ MrldBootArgs, };
-use mrld::x86;
 
 #[entry]
 fn efi_main() -> Status {
@@ -85,8 +84,10 @@ fn efi_main() -> Status {
         // Exit UEFI boot services
         let uefi_map = uefi::boot::exit_boot_services(None);
 
-        // Build the memory map passed to the kernel
-        bup::build_memory_map(&uefi_map, &mut boot_args.memory_map);
+        // Pass the UEFI memory map to the kernel
+        boot_args.uefi_map = uefi_map.buffer().as_ptr() as u64;
+        boot_args.uefi_map_desc_size = uefi_map.meta().desc_size;
+        boot_args.uefi_map_size = uefi_map.meta().map_size;
 
         // Switch to the new set of page tables
         mrld::x86::CR3::write(pml4_ptr.as_ptr() as u64);

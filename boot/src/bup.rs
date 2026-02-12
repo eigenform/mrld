@@ -8,12 +8,6 @@ use uefi::boot::{
     MemoryType
 };
 
-use mrld;
-use mrld::physmem::{
-    MrldMemoryMap, 
-    MrldMemoryKind
-};
-
 /// Wait [indefinitely] for user input, then shut down the machine.
 pub fn wait_for_shutdown() -> ! {
     use uefi::runtime::ResetType;
@@ -65,66 +59,10 @@ pub fn do_console_init() {
     });
 }
 
-pub fn build_memory_map(uefi_map: &MemoryMapOwned, mrld_map: &mut MrldMemoryMap) {
-    let mut idx = 0;
-    for entry in uefi_map.entries() {
-
-        // FIXME: Since this is running after exiting boot services, 
-        // what is the correct way to fail here? 
-        if idx >= MrldMemoryMap::NUM_ENTRIES {
-            //println!("[*] Memory map capacity exceeded?");
-            break;
-        }
-
-        let size = entry.page_count * (1 << 12);
-        let paddr_base = entry.phys_start;
-        let range = paddr_base..(paddr_base + size);
-        let kind = match entry.ty { 
-            MemoryType::LOADER_CODE |
-            MemoryType::LOADER_DATA |
-            MemoryType::BOOT_SERVICES_CODE |
-            MemoryType::BOOT_SERVICES_DATA |
-            MemoryType::CONVENTIONAL => {
-                MrldMemoryKind::Available
-            },
-            MemoryType::RUNTIME_SERVICES_CODE |
-            MemoryType::RUNTIME_SERVICES_DATA => {
-                MrldMemoryKind::UefiRuntime
-            },
-            MemoryType::RESERVED |
-            MemoryType::UNUSABLE |
-            MemoryType::MMIO |
-            MemoryType::MMIO_PORT_SPACE |
-            MemoryType::PAL_CODE => {
-                MrldMemoryKind::UefiReserved
-            },
-            MemoryType::ACPI_NON_VOLATILE => {
-                MrldMemoryKind::AcpiNonVolatile
-            }
-            _ => MrldMemoryKind::Invalid,
-        };
-
-        // Just merge contiguous regions with the same type (?)
-        let is_contiguous = if idx > 0 {
-            range.start == mrld_map.entries[idx-1].range.end && 
-            mrld_map.entries[idx-1].kind == kind
-        } else { 
-            false
-        };
-        if is_contiguous { 
-            mrld_map.entries[idx-1].range.end += size;
-        } else { 
-            mrld_map.entries[idx].range = range;
-            mrld_map.entries[idx].kind = kind;
-            idx += 1;
-        }
-    }
-}
-
 /// Build a small set of page tables.
 ///
 /// 0x0000_0000_0000_0000 - 0x0000_0080_0000_0000:  identity mapped
-/// 0xffff_ffff_8000_0000 - 0xffff_ffff_c000_0000:  mrld kernel
+/// 0xffff_ffff_8000_0000 - 0xffff_ffff_8400_0000:  mrld kernel
 ///
 /// NOTE: This is probably fine; we'll probably just be rebuilding these 
 /// after booting into the kernel anyway.

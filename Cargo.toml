@@ -9,9 +9,19 @@ panic = "abort"
 [profile.dev]
 panic = "abort"
 
-
 [profile.release.package.mrld-boot]
 
 [profile.release.package.mrld-kernel]
 
+
+# (Everything is fine)
+[workspace.lints.rust]
+unused_variables = "allow"
+unused_mut = "allow"
+unused_assignments = "allow"
+dead_code = "allow"
+unreachable_code = "allow"
+unused_imports = "allow"
+unused_parens = "allow"
+unused_unsafe = "allow"
 

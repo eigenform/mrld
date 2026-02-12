@@ -2,6 +2,7 @@
 use crate::println;
 use core::panic::PanicInfo;
 
+/// Global panic handler
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! { unsafe { 
     // Disable interrupts

@@ -41,9 +41,10 @@ impl From<usize> for PageTableIdx {
 
 
 /// Type representing different supported page sizes. 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PageSize { Size4KiB, Size2MiB, Size1GiB, }
 impl PageSize { 
-    pub fn as_usize(&self) -> usize { 
+    pub const fn as_usize(&self) -> usize { 
         match self {
             Self::Size4KiB => 1 << 12,
             Self::Size2MiB => 1 << 21,
@@ -51,10 +52,18 @@ impl PageSize {
         }
     }
 }
+impl From<PageSize> for u64 { 
+    fn from(x: PageSize) -> Self { x.as_usize() as _ }
+}
+impl From<PageSize> for usize { 
+    fn from(x: PageSize) -> Self { x.as_usize() }
+}
+
+
 
 /// Type representing different kinds of page tables.
 /// Variants of type correspond to types implementing [`PageTableKind`].
-pub enum PageTableLevel { PML4, PDP, PD, PT, }
+pub enum PageTableLevel { PML4, PDP, PD, PT, None }
 impl PageTableLevel {
     pub fn next_level(&self) -> Option<Self> {
         match self { 
@@ -62,6 +71,7 @@ impl PageTableLevel {
             Self::PDP  => Some(Self::PD),
             Self::PD   => Some(Self::PT),
             Self::PT   => None,
+            Self::None => None,
         }
     }
 }
@@ -71,7 +81,7 @@ pub trait PageTableKind {
     /// The 'enum'-like representation for this kind of page table.
     const LEVEL: PageTableLevel;
     /// The 'enum'-like representation for the next level of page table.
-    const NEXT_LEVEL: Option<PageTableLevel>;
+    const NEXT_LEVEL: PageTableLevel;
     /// Human-readable name for this kind of page table.
     const NAME: &'static str;
     /// Human-readable name for entries in this kind of page table
@@ -83,6 +93,9 @@ pub trait PageTableKind {
     /// this kind of page table.
     const VADDR_MASK: u64;
     const VADDR_OFF: usize = Self::VADDR_MASK.trailing_zeros() as _;
+
+    /// The *marker type* for the next level of page table.
+    type Next: PageTableKind + 'static;
 }
 
 /// Marker type for a page map level-4 (PML4) table.
@@ -97,38 +110,55 @@ pub struct PD;
 /// Marker type for a terminal page table (PT).
 pub struct PT;
 
+/// Null marker type.
+pub struct NULLPT;
+
 impl PageTableKind for PML4 {
     const LEVEL: PageTableLevel = PageTableLevel::PML4;
-    const NEXT_LEVEL: Option<PageTableLevel> = Some(PageTableLevel::PDP);
+    const NEXT_LEVEL: PageTableLevel = PageTableLevel::PDP;
     const NAME: &'static str = "PML4";
     const ENTRY_NAME: &'static str = "PML4E";
     const TERMINAL_SIZE: Option<PageSize> = None;
     const VADDR_MASK: u64 = 0x0000_ff80_0000_0000;
+    type Next = PDP;
 }
 impl PageTableKind for PDP {
     const LEVEL: PageTableLevel = PageTableLevel::PDP;
-    const NEXT_LEVEL: Option<PageTableLevel> = Some(PageTableLevel::PD);
+    const NEXT_LEVEL: PageTableLevel = PageTableLevel::PD;
     const NAME: &'static str = "PDP";
     const ENTRY_NAME: &'static str = "PDPE";
     const TERMINAL_SIZE: Option<PageSize> = Some(PageSize::Size1GiB);
     const VADDR_MASK: u64 = 0x0000_007f_c000_0000;
+    type Next = PD;
 }
 impl PageTableKind for PD {
     const LEVEL: PageTableLevel = PageTableLevel::PD;
-    const NEXT_LEVEL: Option<PageTableLevel> = Some(PageTableLevel::PT);
+    const NEXT_LEVEL: PageTableLevel = PageTableLevel::PT;
     const NAME: &'static str = "PD";
     const ENTRY_NAME: &'static str = "PDE";
     const TERMINAL_SIZE: Option<PageSize> = Some(PageSize::Size2MiB);
     const VADDR_MASK: u64 = 0x0000_0000_3fe0_0000;
+    type Next = PT;
 }
 impl PageTableKind for PT {
     const LEVEL: PageTableLevel = PageTableLevel::PT;
-    const NEXT_LEVEL: Option<PageTableLevel> = None;
+    const NEXT_LEVEL: PageTableLevel = PageTableLevel::None;
     const NAME: &'static str = "PT";
     const ENTRY_NAME: &'static str = "PTE";
     const TERMINAL_SIZE: Option<PageSize> = Some(PageSize::Size4KiB);
     const VADDR_MASK: u64 = 0x0000_0000_001f_f000;
+    type Next = NULLPT;
 }
+impl PageTableKind for NULLPT {
+    const LEVEL: PageTableLevel = PageTableLevel::None;
+    const NEXT_LEVEL: PageTableLevel = PageTableLevel::None;
+    const NAME: &'static str = "NULL";
+    const ENTRY_NAME: &'static str = "NULL";
+    const TERMINAL_SIZE: Option<PageSize> = None;
+    const VADDR_MASK: u64 = 0x0000_0000_0000_0000;
+    type Next = NULLPT;
+}
+
 
 /// Type alias for PML4 table entries.
 pub type PML4Entry = PageTableEntry<PML4>;
@@ -177,6 +207,11 @@ pub struct PageTableEntry<K: PageTableKind> {
     _level: core::marker::PhantomData<K>
 }
 impl <K: PageTableKind> PageTableEntry<K> {
+    /// "Base [physical] address"
+    const ADDRESS_MASK: u64 = 0x0fff_ffff_ffff_f000;
+    /// "Available-to-software" bits
+    const AVL_MASK: u64     = 0x0000_0000_0000_0e00;
+
     pub fn from_u64(val: u64) -> Self { 
         Self { 
             val, 
@@ -184,15 +219,29 @@ impl <K: PageTableKind> PageTableEntry<K> {
         }
     }
 
+    /// Create a new page table entry
     pub fn new(address: u64, flags: PTFlag) -> Self { 
         let mut val = 0;
         val |= address & Self::ADDRESS_MASK;
         val |= flags.as_u64();
-
         Self { 
             val, 
             _level: core::marker::PhantomData,
         }
+    }
+
+    /// Create a new page table entry pointing to a next level table
+    pub fn new_table_ptr(ptr: *const PageTable<K::Next>) -> Self { 
+        let flags = PTFlag::P | PTFlag::RW;
+
+        Self::new(ptr as u64, flags)
+    }
+
+    pub fn invalid(&self) -> bool { 
+        self.val == 0
+    }
+    pub fn address(&self) -> u64 { 
+        self.val & Self::ADDRESS_MASK
     }
 
     pub fn level(&self) -> PageTableLevel { 
@@ -202,11 +251,6 @@ impl <K: PageTableKind> PageTableEntry<K> {
     pub fn flags(&self) -> PTFlag { 
         PTFlag::from_bits_retain(self.val)
     }
-
-    /// "Base [physical] address"
-    const ADDRESS_MASK: u64 = 0x0fff_ffff_ffff_f000;
-    /// "Available-to-software" bits
-    const AVL_MASK: u64     = 0x0000_0000_0000_0e00;
 
     /// Is this a "terminal" page table entry? 
     ///
@@ -223,16 +267,34 @@ impl <K: PageTableKind> PageTableEntry<K> {
                 self.flags().contains(PTFlag::PS)
             },
             PageTableLevel::PT => true,
+            PageTableLevel::None => true,
         }
     }
 
-    pub fn invalid(&self) -> bool { 
-        self.val == 0
+}
+
+
+// FIXME: This is really unsafe for all sorts of reasons. 
+// Also, we're assuming that these accesses are all performed on pointers
+// to identity-mapped physical memory. 
+impl <K: PageTableKind> PageTableEntry<K> {
+    pub unsafe fn as_table(&self) -> Option<&PageTable<K::Next>> {
+        if !self.terminal() && !self.invalid() {
+            Some(PageTable::ref_from_ptr(self.address() as _))
+        } else { 
+            None
+        }
     }
-    pub fn address(&self) -> u64 { 
-        self.val & Self::ADDRESS_MASK
+
+    pub unsafe fn as_mut_table(&mut self) -> Option<&mut PageTable<K::Next>> {
+        if !self.terminal() && !self.invalid() {
+            Some(PageTable::mut_ref_from_ptr(self.address() as _))
+        } else { 
+            None
+        }
     }
 }
+
 impl <K: PageTableKind> core::fmt::Debug for PageTableEntry<K> { 
     fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let flags = self.flags();
@@ -277,6 +339,13 @@ impl <K: PageTableKind> PageTable<K> {
     pub unsafe fn mut_ref_from_ptr(ptr: *mut u8) -> &'static mut Self { 
         let nn = NonNull::new(ptr).unwrap();
         nn.cast().as_mut()
+    }
+
+    pub fn get(&self, idx: PageTableIdx) -> &PageTableEntry<K> {
+        &self[idx]
+    }
+    pub fn get_mut(&mut self, idx: PageTableIdx) -> &mut PageTableEntry<K> {
+        &mut self[idx]
     }
 
     pub fn set_entry(&mut self, idx: PageTableIdx, entry: PageTableEntry<K>) {

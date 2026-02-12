@@ -11,6 +11,8 @@ pub mod x86;
 
 use core::ops::Range;
 use core::ptr::NonNull;
+use core::mem::MaybeUninit;
+
 
 /// Function pointer reflecting the mrld kernel entrypoint. 
 ///
@@ -32,8 +34,13 @@ unsafe extern "C" {
 pub struct MrldBootArgs { 
     /// Physical address of the RSDP table
     pub rsdp_addr: u64,
-    /// Memory map
-    pub memory_map: physmem::MrldMemoryMap,
+
+    /// Physical address of the UEFI memory map
+    pub uefi_map: u64,
+    /// Reported size of the UEFI memory map
+    pub uefi_map_size: usize,
+    /// Reported descriptor size in the UEFI memory map
+    pub uefi_map_desc_size: usize,
 }
 impl MrldBootArgs { 
     pub fn as_ptr(&self) -> *const Self { 
@@ -42,7 +49,9 @@ impl MrldBootArgs {
     pub fn new_empty() -> Self { 
         Self { 
             rsdp_addr: 0,
-            memory_map: physmem::MrldMemoryMap::new_empty(),
+            uefi_map: 0,
+            uefi_map_size: 0,
+            uefi_map_desc_size: 0,
         }
     }
 }

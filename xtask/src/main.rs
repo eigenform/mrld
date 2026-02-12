@@ -23,6 +23,9 @@ enum XtaskCommand {
 
     /// Run 'picocom' (for communicating with a target over /dev/ttyUSB0)
     Console,
+
+    /// Run tests
+    Test,
 }
 
 
@@ -45,24 +48,6 @@ fn build_boot(root: &Path) -> Result<()> {
         }
     }
 
-    let cmd = Command::new("cargo")
-        .args([
-            "build", 
-            "--package=mrld-boot",
-            "-Z", "build-std=core,alloc,compiler_builtins",
-            "--target=x86_64-unknown-uefi",
-        ])
-        .current_dir(root)
-        .spawn()?
-        .wait()?;
-    if let Some(code) = cmd.code() {
-        if code != 0 { 
-            return Err(anyhow!("Bootloader build error"));
-        }
-    }
-
-
-
     Ok(())
 }
 
@@ -74,6 +59,7 @@ fn build_kernel(root: &Path) -> Result<()> {
             "--package=mrld-kernel",
             "--release", 
             "-Z", "build-std=core,alloc,compiler_builtins",
+            "-Z", "build-std-features=compiler-builtins-mem",
             //"--target=x86_64-unknown-linux-gnu",
             "--target=mrld-kernel.json",
         ])
@@ -86,6 +72,25 @@ fn build_kernel(root: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn run_tests(root: &Path) -> Result<()> {
+    let cmd = Command::new("cargo")
+        .args([
+            "test", 
+            "--package=mrld",
+            "--", "--nocapture"
+        ])
+        .current_dir(root)
+        .spawn()?
+        .wait()?;
+    if let Some(code) = cmd.code() {
+        if code != 0 { 
+            return Err(anyhow!("Kernel build error"));
+        }
+    }
+    Ok(())
+
 }
 
 fn make_symlinks(root: &Path) -> Result<()> {
@@ -141,7 +146,7 @@ fn run_qemu(root: &Path) -> Result<()> {
         "-accel", "kvm",
         "-cpu", "host",
         "-smp", "4",
-        "-m", "2048M",
+        "-m", "4096M",
         "-drive", drive0.as_str(),
         "-drive", drive1.as_str(),
         "-device", "virtio-net-pci,netdev=net0",
@@ -178,6 +183,10 @@ fn main() -> Result<()> {
             build_kernel(&root)?;
             make_symlinks(&root)?;
         },
+        XtaskCommand::Test => { 
+            run_tests(&root)?;
+        },
+
         XtaskCommand::Qemu => {
             run_qemu(&root)?;
         },

@@ -71,8 +71,6 @@ SECTIONS
 		_kernel_istack_hi = .;
 	} :data
 
-	_kernel_heap_base = .;
-
 	/DISCARD/ : {
 		*(.comment*)
 		*(.note*)

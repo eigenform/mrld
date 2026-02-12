@@ -7,15 +7,21 @@ pub fn _print(args: core::fmt::Arguments<'_>) {
 
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => ($crate::macros::_print(core::format_args!($($arg)*)));
+    ($($arg:tt)*) => {
+        $crate::macros::_print(core::format_args!($($arg)*));
+    };
 }
 
 #[macro_export]
 macro_rules! println {
-    () => ($crate::print!("\r\n"));
-    ($($arg:tt)*) => (
-        $crate::macros::_print(
-            core::format_args!("{}{}", core::format_args!($($arg)*), "\r\n")
-        )
+    () => ( $crate::print!("\r\n") );
+    ($fmt:expr) => ( $crate::print!(concat!($fmt, "\r\n")) );
+    ($fmt:expr, $($arg:tt)*) => ( 
+        $crate::print!(concat!($fmt, "\r\n"), $($arg)*)
     );
 }
+
+        //$crate::macros::_print(
+        //    core::format_args!("{}\n", core::format_args!($($arg)*))
+        //)
+
