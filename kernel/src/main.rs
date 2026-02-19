@@ -84,9 +84,11 @@ pub extern "sysv64" fn kernel_main(args: *const MrldBootArgs) -> ! {
     }
 
     // Initialize ACPI
-    unsafe { 
-        acpi::ACPI.init(args.rsdp_addr);
-    }
+    let mut acpi = unsafe { 
+        let mut mgr = acpi::MrldAcpiManager::new(args.rsdp_addr);
+        mgr.init();
+        mgr
+    };
 
 
     { 
@@ -106,6 +108,11 @@ pub extern "sysv64" fn kernel_main(args: *const MrldBootArgs) -> ! {
         use core::alloc::*;
         mm::HEAP.alloc(Layout::new::<[u8; 0x1000]>());
     };
+
+    unsafe { 
+        println!("[!] Going for shutdown (hopefully) ...");
+        acpi.enter_s5_state(5);
+    }
 
     unsafe { 
         core::arch::asm!("ud2");

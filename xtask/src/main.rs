@@ -61,6 +61,7 @@ fn build_kernel(root: &Path) -> Result<()> {
             "-Z", "build-std=core,alloc,compiler_builtins",
             "-Z", "build-std-features=compiler-builtins-mem",
             //"--target=x86_64-unknown-linux-gnu",
+            "-Z", "json-target-spec",
             "--target=mrld-kernel.json",
         ])
         .current_dir(root)

@@ -8,6 +8,7 @@ workspace = true
 
 [dependencies]
 spin = "0.10.0"
-acpi = "6.0.1"
+acpi = { version = "6.0.1" }
 mrld = { path = "../mrld" }
+pretty-hex = "0.4.1"
 uefi-raw = "0.13.0"

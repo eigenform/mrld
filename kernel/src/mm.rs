@@ -57,19 +57,24 @@ impl MrldHeap {
 
 unsafe impl GlobalAlloc for MrldHeap { 
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 { 
-        let base = self.next.load(Ordering::SeqCst);
-        let end = self.end.load(Ordering::SeqCst);
-        let algn = base.align_offset(layout.align());
-        let next_base = base.offset(
-            algn as isize + layout.size() as isize
+        let this_ptr = self.next.load(Ordering::SeqCst);
+        let max_ptr = self.end.load(Ordering::SeqCst);
+
+        let this_algn = this_ptr.align_offset(layout.align());
+        let next_ptr = this_ptr.offset(
+            this_algn as isize + layout.size() as isize
         );
 
-        if next_base >= end { 
+        if next_ptr >= max_ptr { 
             panic!("uhhhhh");
         }
 
-        self.next.store(next_base, Ordering::SeqCst);
-        next_base
+        //println!("[*] alloc {:x?} this={:016x?} next={:016x?}", 
+        //    layout, this_ptr, next_ptr
+        //);
+
+        self.next.store(next_ptr, Ordering::SeqCst);
+        this_ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {

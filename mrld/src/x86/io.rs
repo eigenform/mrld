@@ -20,6 +20,18 @@ impl IoPort {
         Io::in8(self.0)
     }
 
+    /// Write a 16-bit word to this register.
+    #[inline(always)]
+    pub unsafe fn out16(&self, val: u16) {
+        Io::out16(self.0, val);
+    }
+
+    /// Read a 16-bit word from this register.
+    #[inline(always)]
+    pub unsafe fn in16(&self) -> u16 {
+        Io::in16(self.0)
+    }
+
     /// Write a 32-bit word to this register.
     #[inline(always)]
     pub unsafe fn out32(&self, val: u32) {

@@ -15,9 +15,9 @@ dependencies = [
 
 [[package]]
 name = "acpi"
-version = "6.0.1"
+version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c85d96f36022f650ee6f184f1353d077124754cecf6a3e91085a708495c6f5a"
+checksum = "5ccf6d4e668d9babca9103f59f305d3bc55e24355cf166dbddf5a7a5e1243d06"
 dependencies = [
  "bit_field",
  "bitflags",
@@ -217,8 +217,9 @@ dependencies = [
 name = "mrld-kernel"
 version = "0.1.0"
 dependencies = [
- "acpi 6.0.1",
+ "acpi 6.1.0",
  "mrld",
+ "pretty-hex",
  "spin",
  "uefi-raw",
 ]
@@ -238,6 +239,12 @@ dependencies = [
  "bit_field",
  "bitflags",
 ]
+
+[[package]]
+name = "pretty-hex"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbc83ee4a840062f368f9096d80077a9841ec117e17e7f700df81958f1451254"
 
 [[package]]
 name = "proc-macro2"
