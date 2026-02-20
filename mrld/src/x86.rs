@@ -9,11 +9,15 @@ pub mod gdt;
 pub mod gpr;
 pub mod io;
 
+pub mod apic;
+
 pub use cr::*;
 pub use dtr::*;
 pub use msr::*;
 pub use gpr::*;
 pub use io::*;
+
+use core::arch::x86_64::CpuidResult;
 
 #[inline(always)]
 pub fn mfence() {
@@ -38,6 +42,16 @@ pub fn wbinvd() {
 #[inline(always)]
 pub fn pause() {
     unsafe { core::arch::asm!("pause") }
+}
+
+#[inline(always)]
+pub unsafe fn hlt() {
+    unsafe { core::arch::asm!("hlt") }
+}
+
+#[inline(always)]
+pub fn cpuid(leaf: u32, subleaf: u32) -> CpuidResult { 
+    core::arch::x86_64::__cpuid_count(leaf, subleaf)
 }
 
 

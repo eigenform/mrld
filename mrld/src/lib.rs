@@ -8,6 +8,7 @@
 pub mod paging;
 pub mod physmem;
 pub mod x86; 
+pub mod mmio; 
 
 use core::ops::Range;
 use core::ptr::NonNull;

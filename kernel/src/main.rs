@@ -3,10 +3,10 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 #![feature(abi_x86_interrupt)]
 #![feature(allocator_api)]
+#![feature(ascii_char)]
 
 #![no_std]
 #![no_main]
-
 
 mod macros;
 mod serial;
@@ -17,14 +17,13 @@ mod paging;
 mod start;
 mod panic;
 mod interrupt;
+mod tls;
 mod acpi;
+mod apic; 
 
 extern crate alloc;
 
-use spin;
 use mrld::x86::*;
-
-
 use mrld::{
     MrldBootArgs
 };
@@ -36,16 +35,18 @@ use mrld::{
 pub extern "sysv64" fn kernel_main(args: *const MrldBootArgs) -> ! { 
     let args = unsafe { args.as_ref().unwrap() };
 
-    // Initialize serial port
-    unsafe { 
-        serial::COM2.lock().init();
-    }
+    // I guess we can use the APIC ID as a core ID for now
+    let apic_id = mrld::x86::cpuid(0xb, 0).edx;
 
-    println!("[*] HELO from the mrld kernel :^)");
-
-    // Write and switch into a new IDT
     unsafe {
+        // Initialize serial port as soon as possible
+        serial::COM2.lock().init();
+        println!("[*] HELO from the mrld kernel, on core {} :^)", apic_id);
+
+        // Write and switch into a new IDT
         interrupt::IdtManager::init();
+
+        apic::Lapic::init();
     }
 
     // Initialize our memory map with data passed from UEFI. 
@@ -72,42 +73,46 @@ pub extern "sysv64" fn kernel_main(args: *const MrldBootArgs) -> ! {
         (pt_desc, heap_desc)
     };
 
-    // Initialize page tables
     unsafe { 
+        // Initialize page tables
         let mut pt = paging::PAGE_TABLE.lock();
         pt.init(pt_desc, heap_desc);
-    }
 
-    // Initialize the kernel heap
-    unsafe { 
+        // Initialize the global allocator and kernel heap
         mm::HEAP.init();
+
+        // Initialize thread-local storage
+        tls::Tls::init(apic_id as _);
     }
 
     // Initialize ACPI
     let mut acpi = unsafe { 
         let mut mgr = acpi::MrldAcpiManager::new(args.rsdp_addr);
         mgr.init();
+        if mgr.maybe_guest() { 
+            println!("[*] Assuming you're on virtualized hardware ...");
+        }
         mgr
     };
 
 
+
+    println!("[*] Memory map:");
     { 
         let map = physmem::MEMORY_MAP.lock();
         for entry in map.iter_valid() { 
-            println!("{:016x}:{:016x} {:?}", 
+            println!("  {:016x}:{:016x} {:?}", 
                 entry.start(), entry.end(), entry.kind
             );
         }
     }
 
+    let cpuid = mrld::x86::cpuid(1, 0).eax; 
     let patch_level = Msr::rdmsr(Msr::PATCH_LEVEL);
-    println!("Patch level {:08x}", patch_level);
-    println!("[*] Waiting for messages ...");
+    println!("[*] CPUID: {:08x}, patch level {:08x}", cpuid, patch_level);
 
-    let x = unsafe { 
-        use core::alloc::*;
-        mm::HEAP.alloc(Layout::new::<[u8; 0x1000]>());
-    };
+    let x = tls::Tls::as_ref().state();
+    println!("{:?}", x);
 
     unsafe { 
         println!("[!] Going for shutdown (hopefully) ...");

@@ -1,6 +1,4 @@
 
-mod mmio;
-
 use core::ptr::NonNull;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -11,7 +9,10 @@ use acpi::{
     AcpiTable,
     AmlTable,
 
-    platform::AcpiPlatform,
+    platform::{
+        AcpiPlatform,
+        ProcessorState,
+    },
     aml::{
         Interpreter,
         object::*,
@@ -32,13 +33,15 @@ use acpi::{
 use crate::println;
 use spin::Mutex;
 use mrld::x86::io::Io;
+use mrld::mmio::*;
 use core::mem::MaybeUninit;
+use core::pin::Pin;
 
-use mmio::*;
-
+/// Simple helper for dealing with ACPI. 
 pub struct MrldAcpiManager { 
     platform: AcpiPlatform<MrldAcpiHandler>,
     interpreter: Interpreter<MrldAcpiHandler>,
+    maybe_guest: bool,
 }
 impl MrldAcpiManager { 
     pub unsafe fn new(rsdp_addr: u64) -> Self { 
@@ -53,16 +56,29 @@ impl MrldAcpiManager {
             panic!("Couldn't create AcpiPlatform?");
         };
 
+        // NOTE: For now, try to detect virtualized hardware with the OEM ID. 
+        // In QEMU, it seems like most of the tables are 'BOCHS'.
+        println!("[*] ACPI tables:");
+        let mut maybe_guest = false;
+        for (idx, hdr) in platform.tables.table_headers() {
+            let oem_id = hdr.oem_id.as_ascii().unwrap();
+            let creator_id = hdr.creator_id.as_ascii().unwrap();
+            if oem_id.as_str().contains("BOCHS") {
+                maybe_guest = true;
+            }
+            println!("  [{}] {} {}", hdr.signature, oem_id.as_str(), creator_id.as_str());
+        }
+
+
         let dsdt = platform.tables.dsdt().unwrap();
         let dsdt_revision = dsdt.revision;
         let facs = platform.tables.find_table::<Fadt>()
             .and_then(|fadt| fadt.facs_address().ok())
             .map(|facs_address| unsafe { 
-                platform.handler.map_physical_region(facs_address, 
+                platform.handler.map_physical_region::<Facs>(facs_address, 
                     core::mem::size_of::<Facs>()
                 )
             });
-
 
         let mut interpreter = Interpreter::new(
             MrldAcpiHandler,
@@ -71,12 +87,12 @@ impl MrldAcpiManager {
             facs
         );
 
+        // NOTE: Maybe one day we'll be able to parse the DSDT ..
         //let dsdt_mapping = platform.handler.map_physical_region::<SdtHeader>(
         //        dsdt.phys_address, dsdt.length as _
         //);
         //let dsdt_stream_ptr = dsdt_mapping.virtual_start.as_ptr()
         //    .byte_add(core::mem::size_of::<SdtHeader>()) as *const u8;
-
         //let dsdt_stream = core::slice::from_raw_parts(
         //    dsdt_stream_ptr,
         //    dsdt.length as usize - core::mem::size_of::<SdtHeader>(),
@@ -85,8 +101,21 @@ impl MrldAcpiManager {
 
         Self { 
             platform,
-            interpreter
+            interpreter,
+            maybe_guest,
+                
         }
+    }
+
+    pub fn maybe_guest(&self) -> bool { 
+        self.maybe_guest
+    }
+
+    unsafe fn get_fadt(&self) -> PhysicalMapping<MrldAcpiHandler, Fadt> { 
+        self.platform.tables.find_table::<Fadt>().unwrap()
+    }
+    unsafe fn get_madt(&self) -> PhysicalMapping<MrldAcpiHandler, Madt> { 
+        self.platform.tables.find_table::<Madt>().unwrap()
     }
 
     pub unsafe fn init(&mut self) { 
@@ -112,20 +141,39 @@ impl MrldAcpiManager {
                 }
             }
             println!("[*] Switched to ACPI mode");
-
         }
 
-    }
+        let madt = self.get_madt();
+        let lapic_addr = madt.get().local_apic_address;
+        println!("{:08x?}", lapic_addr);
 
+
+        for entry in madt.get().entries() {
+            println!("{:x?}", entry);
+        }
+
+        if let Some(info) = &self.platform.processor_info { 
+            println!("{:?}", info.boot_processor);
+            for p in &info.application_processors { 
+                if p.state == ProcessorState::Disabled { 
+                    continue;
+                }
+                println!("{:?}", p);
+            }
+        }
+
+
+    }
+}
+
+
+/// Power management
+impl MrldAcpiManager {
     pub unsafe fn system_reset(&self) -> ! { 
         let fadt = self.get_fadt();
         mrld::x86::io::Io::out8(fadt.reset_reg.address as _, fadt.reset_value);
         core::arch::asm!("hlt");
         loop {}
-    }
-
-    unsafe fn get_fadt(&self) -> PhysicalMapping<MrldAcpiHandler, Fadt> { 
-        self.platform.tables.find_table::<Fadt>().unwrap()
     }
 
     /// Enter some sleep state (???)
@@ -151,7 +199,7 @@ impl MrldAcpiManager {
         let mut evt = mrld::x86::io::IoPort::new(pm1a_evt as _);
         let x = evt.in16();
         let y = 0b1100_0111_0011_0001;
-        println!("PM1_EVT: {:04x} -> {:04x}", x, y);
+        //println!("PM1_EVT: {:04x} -> {:04x}", x, y);
         evt.out16(y);
 
         // "Program the SLP_TYPx fields with the values contained in the 

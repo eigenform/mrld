@@ -8,6 +8,10 @@ impl Msr {
 
     pub const EFER: u32 = 0xc000_0080;
 
+    pub const FS_BASE: u32 = 0xc000_0100;
+    pub const GS_BASE: u32 = 0xc000_0101;
+    pub const KERNEL_GS_BASE: u32 = 0xc000_0102;
+
     pub const SYS_CFG: u32 = 0xc001_0010;
     pub const HWCR: u32    = 0xc001_0015;
     pub const VM_CR: u32   = 0xc001_0114;

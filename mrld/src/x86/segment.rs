@@ -150,4 +150,3 @@ impl Segment for GS {
     }
 }
 
-

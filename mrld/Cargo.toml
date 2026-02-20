@@ -8,4 +8,5 @@ workspace = true
 
 [dependencies]
 bitflags = "2.9.0"
+modular-bitfield = "0.13.1"
 uefi-raw = "0.13.0"
