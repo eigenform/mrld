@@ -26,6 +26,8 @@ enum XtaskCommand {
 
     /// Run tests
     Test,
+
+    Gdb,
 }
 
 
@@ -56,6 +58,7 @@ fn build_kernel(root: &Path) -> Result<()> {
     let cmd = Command::new("cargo")
         .args([
             "build", 
+            "-vv",
             "--package=mrld-kernel",
             "--release", 
             "-Z", "build-std=core,alloc,compiler_builtins",
@@ -72,6 +75,28 @@ fn build_kernel(root: &Path) -> Result<()> {
             return Err(anyhow!("Kernel build error"));
         }
     }
+
+
+    let cmd = Command::new("cargo")
+        .args([
+            "build", 
+            "--package=mrld-kernel",
+            "-Z", "build-std=core,alloc,compiler_builtins",
+            "-Z", "build-std-features=compiler-builtins-mem",
+            //"--target=x86_64-unknown-linux-gnu",
+            "-Z", "json-target-spec",
+            "--target=mrld-kernel.json",
+        ])
+        .current_dir(root)
+        .spawn()?
+        .wait()?;
+    if let Some(code) = cmd.code() {
+        if code != 0 { 
+            return Err(anyhow!("Kernel build error"));
+        }
+    }
+
+
     Ok(())
 }
 
@@ -104,6 +129,10 @@ fn make_symlinks(root: &Path) -> Result<()> {
     let kernel_path = root.join("target/mrld-kernel/release/mrld-kernel");
     let kernel_link  = pxe_path.join("mrld-kernel");
 
+    let kernel_dbg_path = root.join("target/mrld-kernel/debug/mrld-kernel");
+    let kernel_dbg_link  = pxe_path.join("mrld-kernel-debug");
+
+
     if let Err(e) = symlink(bootloader_path, bootloader_link) { 
         if e.kind() != ErrorKind::AlreadyExists {
             return Err(e.into());
@@ -114,6 +143,12 @@ fn make_symlinks(root: &Path) -> Result<()> {
             return Err(e.into());
         }
     };
+    if let Err(e) = symlink(kernel_dbg_path, kernel_dbg_link) { 
+        if e.kind() != ErrorKind::AlreadyExists {
+            return Err(e.into());
+        }
+    };
+
 
     Ok(())
 }
@@ -153,6 +188,9 @@ fn run_qemu(root: &Path) -> Result<()> {
         "-device", "virtio-net-pci,netdev=net0",
         "-netdev", netdev.as_str(),
 
+        //"-gdb", "tcp::1234", "-S",
+        //"-d", "invalid_mem",
+
         // Disable COM1 (0x3f8), use COM2 (0x2f8) instead
         "-serial", "none",
         "-serial", "stdio",
@@ -172,6 +210,18 @@ fn run_picocom() -> Result<()> {
         .args(["-q", "-b", "115200", "/dev/ttyUSB0"])
         .spawn()?
         .wait()?;
+    Ok(())
+}
+
+fn run_gdb() -> Result<()> { 
+    let mut cmd = Command::new("gdb");
+    cmd.arg("-ex").arg("file target/mrld-kernel/debug/mrld-kernel");
+    cmd.arg("-ex").arg("target remote localhost:1234");
+    cmd.arg("-ex").arg("hb kernel_main");
+    cmd.arg("-ex").arg("continue");
+
+    cmd.status()?;
+
     Ok(())
 }
 
@@ -196,6 +246,9 @@ fn main() -> Result<()> {
         }
         XtaskCommand::Console => {
             run_picocom()?;
+        },
+        XtaskCommand::Gdb => { 
+            run_gdb()?;
         },
     }
     Ok(())

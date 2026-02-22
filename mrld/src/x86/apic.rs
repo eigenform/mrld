@@ -18,6 +18,11 @@ pub struct ApicBar {
     pub aba: B40,
     _r52: B12,
 }
+impl ApicBar { 
+    pub fn base_address(&self) -> u64 { 
+        self.aba() << 12
+    }
+}
 
 
 #[bitfield] 
@@ -156,16 +161,25 @@ pub struct SpuriousIntr {
 #[bitfield] 
 #[repr(u64)]
 pub struct IntrCommand { 
+    /// Vector
     pub vec: B8,
+    /// Message type
     pub mt: B3,
+    /// Destination mode
     pub dm: bool,
+    /// Delivery status
     pub ds: bool,
     _r13: B1,
+    /// Level (assert or deassert)
     pub l: bool,
+    /// Trigger mode (1 = level-sensitive, 0 = edge-triggered)
     pub tgm: bool,
+    /// Remote read status
     pub rrs: B2,
+    /// Destination shorthand
     pub dsh: B2,
     _r20: B36,
+    /// Destination
     pub des: B8,
 }
 

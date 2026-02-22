@@ -25,6 +25,11 @@ impl MmioWidth for u32 {
     const BITS: usize = 32;
     const ONE: Self = 1;
 }
+impl MmioWidth for u64 { 
+    const BITS: usize = 64;
+    const ONE: Self = 1;
+}
+
 
 
 

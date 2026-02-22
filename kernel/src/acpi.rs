@@ -40,7 +40,7 @@ use core::pin::Pin;
 /// Simple helper for dealing with ACPI. 
 pub struct MrldAcpiManager { 
     platform: AcpiPlatform<MrldAcpiHandler>,
-    interpreter: Interpreter<MrldAcpiHandler>,
+    //interpreter: Interpreter<MrldAcpiHandler>,
     maybe_guest: bool,
 }
 impl MrldAcpiManager { 
@@ -80,12 +80,12 @@ impl MrldAcpiManager {
                 )
             });
 
-        let mut interpreter = Interpreter::new(
-            MrldAcpiHandler,
-            dsdt_revision,
-            platform.registers.clone(),
-            facs
-        );
+        //let mut interpreter = Interpreter::new(
+        //    MrldAcpiHandler,
+        //    dsdt_revision,
+        //    platform.registers.clone(),
+        //    facs
+        //);
 
         // NOTE: Maybe one day we'll be able to parse the DSDT ..
         //let dsdt_mapping = platform.handler.map_physical_region::<SdtHeader>(
@@ -101,7 +101,7 @@ impl MrldAcpiManager {
 
         Self { 
             platform,
-            interpreter,
+            //interpreter,
             maybe_guest,
                 
         }

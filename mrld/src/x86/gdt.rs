@@ -45,10 +45,17 @@ impl DFlags {
     pub const CODE: Self = Self::from_bits_truncate(
         Self::DEFAULT.bits() | Self::L.bits() | Self::E.bits()
     );
-
     pub const DATA: Self = Self::from_bits_truncate(
         Self::DEFAULT.bits() | Self::L.bits()
     );
+
+    pub const CODE32: Self = Self::from_bits_truncate(
+        Self::DEFAULT.bits() | Self::D.bits() | Self::E.bits()
+    );
+    pub const DATA32: Self = Self::from_bits_truncate(
+        Self::DEFAULT.bits() | Self::D.bits()
+    );
+
 }
 
 /// A 64-bit "user" descriptor.

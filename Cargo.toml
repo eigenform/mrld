@@ -1,3 +1,6 @@
+
+#cargo-features = ["profile-rustflags"]
+
 [workspace]
 members = ["boot", "kernel", "mrld", "xtask"]
 resolver = "3"
@@ -13,6 +16,9 @@ panic = "abort"
 
 [profile.release.package.mrld-kernel]
 
+[profile.dev.package.mrld-kernel]
+#rustflags = ["-Cdebug-assertions=false"]
+
 
 # (Everything is fine)
 [workspace.lints.rust]
@@ -24,4 +30,5 @@ unreachable_code = "allow"
 unused_imports = "allow"
 unused_parens = "allow"
 unused_unsafe = "allow"
+non_snake_case = "allow"
 

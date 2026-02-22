@@ -27,7 +27,7 @@ pub struct KernelImage {
 }
 impl KernelImage {
     /// Fixed remote filename on the PXE server
-    pub const REMOTE_FILENAME: &'static CStr8 = cstr8!("mrld-kernel");
+    pub const REMOTE_FILENAME: &'static CStr8 = cstr8!("mrld-kernel-debug");
 
     pub fn as_mut_slice(&mut self) -> &mut [u8] { 
         unsafe { 

@@ -20,6 +20,8 @@ mod interrupt;
 mod tls;
 mod acpi;
 mod apic; 
+mod smp;
+mod trampoline; 
 
 extern crate alloc;
 
@@ -113,6 +115,12 @@ pub extern "sysv64" fn kernel_main(args: *const MrldBootArgs) -> ! {
 
     let x = tls::Tls::as_ref().state();
     println!("{:?}", x);
+
+    unsafe { 
+        smp::Smp::init();
+    }
+
+
 
     unsafe { 
         println!("[!] Going for shutdown (hopefully) ...");

@@ -89,8 +89,8 @@ const KERNEL_DATA_DESC: Descriptor = Descriptor::new(
 // Build the '.start.gdt' section contents.
 core::arch::global_asm!(r#"
 .section .start.gdt
-.global KERNEL_GDT
 .align 64
+.global KERNEL_GDT
 KERNEL_GDT:
     .quad 0x0000000000000000
     .quad {text}
