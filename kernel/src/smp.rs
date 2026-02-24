@@ -1,5 +1,6 @@
 
 use mrld::x86::apic::*;
+use mrld::physmem::*;
 use crate::apic;
 use crate::println;
 use crate::trampoline;
@@ -13,25 +14,53 @@ unsafe extern "C" {
 
 pub struct Smp;
 impl Smp { 
-    pub fn wait() { 
-        loop {}
-    }
+
+    // FIXME: Actually do this in a sane way
     pub unsafe fn init() { 
-        const TRAMPOLINE_PHYS: usize = 0x0000_8000;
+        use core::alloc::*;
+        use alloc::alloc::alloc;
 
-        let mut tgt_ptr = (trampoline::Trampoline::PHYS_BASE as *mut u8);
-        let src_ptr = trampoline::Trampoline::as_ptr();
-        let trampoline_len = trampoline::Trampoline::DATA.len();
+        let stac_lo = alloc(
+            core::alloc::Layout::new::<[u8; 0x1000]>()
+            .align_to(0x1000).unwrap()
+        );
+        stac_lo.write_bytes(0, 0x1000);
+        let stac_hi = stac_lo.offset(0x1000);
 
-        tgt_ptr.write_bytes(0, 0x8000);
-        tgt_ptr.copy_from_nonoverlapping(src_ptr, trampoline_len);
+        trampoline::Trampoline::write(
+            ap_entry as _,
+            mrld::x86::CR3::read(),
+            stac_hi as u64 - 16,
+        );
 
         apic::Lapic::send_sipi(1);
 
-        Self::wait()
+        // FIXME: Wait around for APs to check back in
+        unsafe { 
+            loop { mrld::x86::pause(); }
+        }
 
 
     }
 }
 
 
+// NOTE: APs enter this from the trampoline in 64-bit mode with paging. 
+//
+// FIXME:
+// - There's no IDT
+// - There's some provisional GDT
+// - We're using PML4 from the bootstrap core
+// - Actually do something
+//
+pub unsafe fn ap_entry() -> ! { 
+    use crate::tls::*;
+    let apic_id = mrld::x86::cpuid(0xb, 0).edx;
+    println!("HELO from AP {}", apic_id);
+
+    Tls::init(apic_id as _);
+
+    unsafe { 
+        loop { mrld::x86::pause(); }
+    }
+}

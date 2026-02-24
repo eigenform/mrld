@@ -27,7 +27,7 @@ fn main() {
     let mut cmd = Command::new("ld")
         .arg("-o").arg(&elf_out)
         .arg("-T").arg(&ld)
-        .arg("-b").arg("elf32-i386")
+        //.arg("-b").arg("elf32-i386")
         .arg(&obj_out)
         .status().unwrap();
     if let Some(code) = cmd.code() { 
@@ -37,7 +37,9 @@ fn main() {
 
     let cmd = Command::new("objcopy")
         .arg("-O").arg("binary")
-        .arg("--pad-to").arg("0x8400")
+        .arg("-j").arg(".text")
+        .arg("-j").arg(".data")
+        .arg("--pad-to").arg("0x9000")
         .arg(&elf_out)
         .arg(&bin_out)
         .status().unwrap();

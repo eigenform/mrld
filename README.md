@@ -4,12 +4,16 @@
 x86 experiments.
 
 ```
+.cargo/          - Cargo configuration
 boot/            - mrld UEFI bootloader
 kernel/          - mrld kernel
 mrld/            - mrld support library
 pxe/             - [Untracked] directory for serving files with PXE/TFTP
 xtask/           - mrld build tooling
 README.md        - You are here
+mrld-kernel.json - mrld kernel rustc target
+mrld-kernel.ld   - mrld kernel linkerscript
+trampoline.ld    - trampoline linkerscript
 start-network.sh - Script for serving bootloader with PXE
 ```
 
@@ -20,18 +24,24 @@ Run `cargo xtask help` to see more information about available commands.
 
 - `cargo xtask build` invokes `cargo build` for the bootloader and kernel
 - `cargo xtask qemu` attempts to PXE boot on QEMU 
+- `cargo xtask gdb` attempts to attach GDB to QEMU
 
 ### Build Notes
 
-There are three parts to this: 
+There are four parts to this: 
 
 - A UEFI boot-stub/bootloader, using the `x86_64-unknown-uefi` target
 - A kernel using the [`mrld-kernel.json`](./mrld-kernel.json) target
 - A support library (which should be compatible with both targets)
+- A trampoline for bringing up AP hardware threads
 
 The `mrld-kernel` target uses `code-model=kernel`. [Presumably, apparently] 
 this means that when linking, all symbols are expected to have values in 
 the range above `0xffff_ffff_8000_0000`. 
+
+The trampoline is assembled and linked with GNU binutils 
+(`as`, `ld`, and `objdump`). See [`kernel/build.rs`](./kernel/build.rs) 
+for more details. 
 
 ## Using this Project
 
@@ -89,6 +99,9 @@ The current process is:
 2. Run `cargo xtask qemu`
 
 ### Using Real Hardware
+
+I'm testing this on a Lenovo ThinkCentre M75q Gen2.
+Compatibility with other hardware is not planned. 
 
 The current process is:
 

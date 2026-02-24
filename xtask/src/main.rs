@@ -16,7 +16,11 @@ enum XtaskCommand {
     Build,
 
     /// PXE boot into the bootloader with QEMU
-    Qemu,
+    Qemu { 
+        /// Enable GDB server and halt
+        #[arg(long, short)]
+        gdb: bool,
+    },
 
     /// Start PXE services on the host machine
     Pxe,
@@ -27,6 +31,7 @@ enum XtaskCommand {
     /// Run tests
     Test,
 
+    /// Attach GDB to QEMU
     Gdb,
 }
 
@@ -158,7 +163,7 @@ const OVMF_CODE: &'static str = "/usr/share/edk2-ovmf/x64/OVMF_CODE.4m.fd";
 const OVMF_VARS: &'static str = "/usr/share/edk2-ovmf/x64/OVMF_VARS.4m.fd";
 
 // FIXME: Maybe try to automatically make a symlink in pxe/
-fn run_qemu(root: &Path) -> Result<()> { 
+fn run_qemu(root: &Path, gdb: bool) -> Result<()> { 
 
     let pxe_path = root.join("pxe");
 
@@ -175,29 +180,43 @@ fn run_qemu(root: &Path) -> Result<()> {
     let netdev = format!(
         "user,id=net0,ipv6=off,net=10.200.200.0/24,tftp={},bootfile=mrld-boot.efi",
         pxe_path.into_os_string().to_str().unwrap());
-    let arghhh = [
+
+    let mut arghhhs: Vec<&str> = vec![
         "-nodefaults",
         "-nographic",
         "-vga", "virtio",
         "-accel", "kvm",
         "-cpu", "host",
         "-smp", "4",
+
+        //"-d", "cpu", 
+        //"-d", "exec",
+        //"-d", "pcall",
+        //"-d", "cpu_reset",
+        //"-d", "int",
+        //"-D", "stdio",
+
         "-m", "4096M",
         "-drive", drive0.as_str(),
         "-drive", drive1.as_str(),
         "-device", "virtio-net-pci,netdev=net0",
         "-netdev", netdev.as_str(),
 
-        //"-gdb", "tcp::1234", "-S",
-        //"-d", "invalid_mem",
-
         // Disable COM1 (0x3f8), use COM2 (0x2f8) instead
         "-serial", "none",
         "-serial", "stdio",
+        //"-monitor", "stdio",
         "-boot", "n",
     ];
+
+    if gdb { 
+        arghhhs.append(&mut vec![ 
+            "-gdb", "tcp::1234", "-S",
+        ]);
+    }
+
     Command::new("qemu-system-x86_64")
-        .args(arghhh)
+        .args(arghhhs)
         .current_dir(root)
         .spawn()?
         .wait()?;
@@ -215,6 +234,12 @@ fn run_picocom() -> Result<()> {
 
 fn run_gdb() -> Result<()> { 
     let mut cmd = Command::new("gdb");
+    cmd.arg("-ex").arg("set print demangle");
+    //cmd.arg("-ex").arg("set arch i386:x64-32");
+    cmd.arg("-ex").arg("set print asm-demangle");
+    cmd.arg("-ex").arg("set schedule-multiple on");
+    cmd.arg("-ex").arg("set debug remote 1");
+    cmd.arg("-ex").arg("set debug remote-packet-max-chars unlimited");
     cmd.arg("-ex").arg("file target/mrld-kernel/debug/mrld-kernel");
     cmd.arg("-ex").arg("target remote localhost:1234");
     cmd.arg("-ex").arg("hb kernel_main");
@@ -238,8 +263,8 @@ fn main() -> Result<()> {
             run_tests(&root)?;
         },
 
-        XtaskCommand::Qemu => {
-            run_qemu(&root)?;
+        XtaskCommand::Qemu { gdb } => {
+            run_qemu(&root, gdb)?;
         },
         XtaskCommand::Pxe => {
             //pxe::start(&root)?;

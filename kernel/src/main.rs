@@ -59,7 +59,7 @@ pub extern "sysv64" fn kernel_main(args: *const MrldBootArgs) -> ! {
 
         let Some(pt_desc) = mmap.allocate(
             mrld::paging::PageSize::Size2MiB, 
-            32, 
+            8, 
             mrld::physmem::MrldMemoryKind::KernelPaging
         ) else { 
             panic!("Couldn't reserve physical memory for page tables?");
@@ -114,7 +114,6 @@ pub extern "sysv64" fn kernel_main(args: *const MrldBootArgs) -> ! {
     println!("[*] CPUID: {:08x}, patch level {:08x}", cpuid, patch_level);
 
     let x = tls::Tls::as_ref().state();
-    println!("{:?}", x);
 
     unsafe { 
         smp::Smp::init();

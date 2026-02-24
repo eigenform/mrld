@@ -49,6 +49,9 @@ impl MrldPageTable {
     /// - Allocate and create some default mappings
     /// - Commit the new PML4 to CR3
     ///
+    /// NOTE: The stack for the bootstrap core is always embedded in the 
+    /// kernel image. 
+    ///
     pub unsafe fn init(&mut self, 
         pt_desc: MrldMemoryDesc,
         heap_desc: MrldMemoryDesc,
